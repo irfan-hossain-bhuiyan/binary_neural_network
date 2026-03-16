@@ -6,6 +6,18 @@ from prelude import leaky_clamp
 from data_utils import generate_xor_dataset
 
 
+class InverterPass(nn.Module):
+    """Pass-through layer that concatenates inputs with their inverted values (1 - x).
+
+    Given input x (batch_size, features), returns concat([x, 1 - x], dim=-1),
+    effectively doubling the feature dimension while preserving both the original
+    signal and its logical inversion.
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        inverted = 1.0 - x
+        return torch.cat([x, inverted], dim=-1)
+
 class ExpectationSoftmaxLayer(nn.Module):
     """Custom layer with expectation-based softmax aggregation.
     For each output neuron j:
@@ -61,15 +73,15 @@ class ExpectationSoftmaxLayer(nn.Module):
         # z: (batch_size, out_features, in_features)
         z = x.unsqueeze(1) * actual_weight.unsqueeze(0)
 
-        # Scale before softmax to control sharpness
-        z_scaled = self.tau * z
+        # Hard max over input dimension (last dim); tau retained but unused here
+        # Previously (softmax expectation):
+        # z_scaled = self.tau * z
+        # p = F.softmax(z_scaled, dim=-1)
+        # s = (p * z).sum(dim=-1)
 
-        # Softmax over input dimension (last dim)
-        p = F.softmax(z_scaled, dim=-1)
-
-        # Expectation with respect to original z
+        # Hard max output
         # s: (batch_size, out_features)
-        s = (p * z).sum(dim=-1)
+        s = z.max(dim=-1).values
 
         return s
 
@@ -89,23 +101,24 @@ def _format_grad_stats(stats: dict[str, float], max_items: int = 6) -> str:
 
 
 class XorExpectationNet(nn.Module):
-    """Network for 32-bit XOR using expectation-softmax layers.
+    """Network for 32-bit XOR using expectation-softmax layers with inverter passes.
 
-    Architecture:
-        64 -> 128 -> 64 -> 32
-    First two layers use an additional nonlinearity (1 - x) after the
-    expectation-softmax layer. 
+    Architecture (feature dims after each block):
+        64 -> 256 -> [concat with 1 - x -> 512] -> 128 -> [concat -> 256] -> 64 -> [concat -> 128] -> 32
     """
 
     def __init__(self):
         super().__init__()
         # Shared temperature parameter for all layers
         self.shared_log_tau = nn.Parameter(torch.zeros(1))
-
-        self.layer1 = ExpectationSoftmaxLayer(in_features=64, out_features=256, shared_log_tau=self.shared_log_tau)
-        self.layer2 = ExpectationSoftmaxLayer(in_features=256, out_features=128, shared_log_tau=self.shared_log_tau)
-        self.layer3 = ExpectationSoftmaxLayer(in_features=128, out_features=64, shared_log_tau=self.shared_log_tau)
-        self.layer4 = ExpectationSoftmaxLayer(in_features=64, out_features=32, shared_log_tau=self.shared_log_tau)
+        self.inv0 = InverterPass()
+        self.layer1 = ExpectationSoftmaxLayer(in_features=128, out_features=256, shared_log_tau=self.shared_log_tau)
+        self.inv1 = InverterPass()
+        self.layer2 = ExpectationSoftmaxLayer(in_features=512, out_features=128, shared_log_tau=self.shared_log_tau)
+        self.inv2 = InverterPass()
+        self.layer3 = ExpectationSoftmaxLayer(in_features=256, out_features=64, shared_log_tau=self.shared_log_tau)
+        self.inv3 = InverterPass()
+        self.layer4 = ExpectationSoftmaxLayer(in_features=128, out_features=32, shared_log_tau=self.shared_log_tau)
 
     @property
     def tau(self) -> torch.Tensor:
@@ -113,15 +126,16 @@ class XorExpectationNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch_size, 64)
+        x = self.inv0(x) 
         x = self.layer1(x)
-        x = 1.0 - x  # inverter activation on hidden layer
+        x = self.inv1(x)
 
         x = self.layer2(x)
-        x = 1.0 - x  # inverter activation on hidden layer
+        x = self.inv2(x)
 
-        # Final layer: no inverter, outputs are logits
         x = self.layer3(x)
-        x= 1.0 - x
+        x = self.inv3(x)
+
         x = self.layer4(x)
         return x
 
@@ -232,4 +246,4 @@ def main(epochs=1000):
 
 
 if __name__ == "__main__":
-    main(500)
+    main(2000)
