@@ -220,13 +220,13 @@ def plot_weight_distribution(model: nn.Module, bins: int = 50):
     plt.title(f"Sigmoid(weight) distribution | mean={all_weights.mean():.3f}, std={all_weights.std():.3f}")
     plt.tight_layout()
     plt.show()
-def main():
+def main(epochs=1000):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = train_model(num_epochs=500,device=device,tau_reg_weight=0.0,binary_weight_reg=0.001)
+    model = train_model(num_epochs=epochs,device=device,tau_reg_weight=0.0,binary_weight_reg=0.001)
     plot_weight_distribution(model)
     acc = evaluate_bit_accuracy(model, device=device)
     print(f"Bitwise accuracy on XOR test set: {acc * 100:.2f}%")
 
 
 if __name__ == "__main__":
-    main()
+    main(500)
