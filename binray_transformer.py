@@ -103,8 +103,9 @@ class XorExpectationNet(nn.Module):
         self.shared_log_tau = nn.Parameter(torch.zeros(1))
 
         self.layer1 = ExpectationSoftmaxLayer(in_features=64, out_features=256, shared_log_tau=self.shared_log_tau)
-        self.layer2 = ExpectationSoftmaxLayer(in_features=256, out_features=64, shared_log_tau=self.shared_log_tau)
-        self.layer3 = ExpectationSoftmaxLayer(in_features=64, out_features=32, shared_log_tau=self.shared_log_tau)
+        self.layer2 = ExpectationSoftmaxLayer(in_features=256, out_features=128, shared_log_tau=self.shared_log_tau)
+        self.layer3 = ExpectationSoftmaxLayer(in_features=128, out_features=64, shared_log_tau=self.shared_log_tau)
+        self.layer4 = ExpectationSoftmaxLayer(in_features=64, out_features=32, shared_log_tau=self.shared_log_tau)
 
     @property
     def tau(self) -> torch.Tensor:
@@ -120,6 +121,8 @@ class XorExpectationNet(nn.Module):
 
         # Final layer: no inverter, outputs are logits
         x = self.layer3(x)
+        x= 1.0 - x
+        x = self.layer4(x)
         return x
 
 def train_model(
