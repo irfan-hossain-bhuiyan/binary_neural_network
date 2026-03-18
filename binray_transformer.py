@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from typing import cast
+from typing import Any, cast
+from rich.console import Console
+from rich.table import Table
 from prelude import leaky_clamp
 from data_utils import generate_xor_dataset
 
@@ -83,9 +85,19 @@ def _collect_grad_norms(model: nn.Module) -> dict[str, float]:
         stats[name] = param.grad.detach().norm().item()
     return stats
 
-def _format_grad_stats(stats: dict[str, float], max_items: int = 6) -> str:
-    items = list(stats.items())[:max_items]
-    return "; ".join(f"{k}: {v:.3e}" for k, v in items)
+def _format_grad_stats(stats: dict[str, float], max_items: int = 6) -> Table:
+    table = Table(title="Gradient Norms", show_header=True, header_style="bold cyan")
+    table.add_column("param", style="white", overflow="fold")
+    table.add_column("norm", justify="right", style="magenta")
+
+    if not stats:
+        table.add_row("(no gradients)", "-")
+        return table
+
+    items = sorted(stats.items(), key=lambda kv: kv[0])[:max_items]
+    for k, v in items:
+        table.add_row(k, f"{v:.3e}")
+    return table
 
 def _detect_vanishing_grads(stats: dict[str, float], threshold: float = 1e-8) -> bool:
     if not stats:
@@ -95,6 +107,7 @@ def _detect_vanishing_grads(stats: dict[str, float], threshold: float = 1e-8) ->
 def resolve_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DEVICE = resolve_device()
+CONSOLE = Console()
 
 class MultiLayerLogicGateNet(nn.Module):
     """Expectation-based multi-layer gate network with configurable depth and tau sharing."""
@@ -164,7 +177,9 @@ def train_model(
     init_log_tau: float = 0.0,
     use_softmax: bool = False,
     model: MultiLayerLogicGateNet | None = None,
-    optimizer: torch.optim.Optimizer | None = None,
+    lr:float =0.1,
+    optimizer_cls: type[torch.optim.Optimizer] = torch.optim.Adam,
+    optimizer_kwargs: dict[str, Any] | None = None,
     loss_fn: nn.modules.loss._Loss | None = None,
 ):
     if model is None:
@@ -177,8 +192,9 @@ def train_model(
         )
     model = model.to(DEVICE)
 
-    if optimizer is None:
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.25,betas=(0.5,0.5))
+    if optimizer_kwargs is None:
+        optimizer_kwargs = {"lr":lr,}
+    optimizer = optimizer_cls(model.parameters(),**optimizer_kwargs)
     loss_fn = nn.BCELoss() if loss_fn is None else loss_fn
 
     X, Y = generate_xor_dataset(train_samples, device=DEVICE)
@@ -194,6 +210,7 @@ def train_model(
         vanishing_warned = False
 
         grad_msg = None
+        epoch_vanishing = False
         for i in range(0, train_samples, batch_size):
             xb = X_epoch[i : i + batch_size]
             yb = Y_epoch[i : i + batch_size]
@@ -226,11 +243,15 @@ def train_model(
             if log_gradients_every is not None and epoch % log_gradients_every == 0 and i == 0:
                 grad_stats = _collect_grad_norms(model)
                 grad_msg = _format_grad_stats(grad_stats)
-            if not vanishing_warned:
-                grad_stats = _collect_grad_norms(model)
-                if _detect_vanishing_grads(grad_stats):
-                    print(f"[warn] epoch {epoch:03d} batch {i//batch_size:03d}: gradients near zero (max_norm < 1e-8)")
-                    vanishing_warned = True
+            grad_stats = _collect_grad_norms(model)
+            is_vanishing = _detect_vanishing_grads(grad_stats)
+            epoch_vanishing = epoch_vanishing or is_vanishing
+            if not vanishing_warned and is_vanishing:
+                CONSOLE.print(
+                    f"[bold red][warn][/bold red] epoch {epoch:03d} batch {i//batch_size:03d}: "
+                    "gradients near zero (max_norm < 1e-8)"
+                )
+                vanishing_warned = True
 
             optimizer.step()
 
@@ -250,10 +271,10 @@ def train_model(
             taus = cast(list[torch.Tensor], model.tau)
             tau_val = [t.item() for t in taus]
 
+        vanish_status = "[bold red]VANISHING[/bold red]" if epoch_vanishing else "[green]OK[/green]"
+        CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {tau_val} | grads = {vanish_status}")
         if grad_msg:
-            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {tau_val} | grads: {grad_msg}")
-        else:
-            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {tau_val}")
+            CONSOLE.print(grad_msg)
 
     return model, loss_history
 
@@ -304,7 +325,10 @@ def main(epochs: int = 1000):
     model, loss_history = train_model(
         num_epochs=epochs,
         tau_reg_weight=0.0,
-        binary_weight_reg=0.001,
+        binary_weight_reg=0.0,
+        log_gradients_every=1,
+        use_softmax= True,
+        is_shared_tau=False,
     )
     plot_training_loss(loss_history)
     plot_weight_distribution(model)
