@@ -20,7 +20,7 @@ class OrGateLayer(nn.Module):
     Args:
         in_features: input feature dimension
         out_features: output feature dimension
-        shared_log_tau: if a float is provided (default), a new nn.Parameter is created
+        shared_tau_unconstrained: if a float is provided (default), a new nn.Parameter is created
             and owned by this layer (not shared). If an nn.Parameter is provided, it
             will be used directly, enabling temperature sharing across layers.
         use_softmax: if True, uses temperature-scaled softmax expectation; otherwise
@@ -31,7 +31,7 @@ class OrGateLayer(nn.Module):
         self,
         in_features: int,
         out_features: int,
-        shared_log_tau: float | nn.Parameter = 0.0,
+        shared_tau_unconstrained: float | nn.Parameter = 0.0,
         use_softmax: bool = False,
     ):
         super().__init__()
@@ -42,16 +42,16 @@ class OrGateLayer(nn.Module):
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
 
-        if isinstance(shared_log_tau, nn.Parameter):
-            self.log_tau = shared_log_tau
+        if isinstance(shared_tau_unconstrained, nn.Parameter):
+            self.tau_unconstrained = shared_tau_unconstrained
             self._owns_tau = False
         else:
-            self.log_tau = nn.Parameter(torch.tensor(float(shared_log_tau)))
+            self.tau_unconstrained = nn.Parameter(torch.tensor(float(shared_tau_unconstrained)))
             self._owns_tau = True
 
     @property
     def tau(self) -> torch.Tensor:
-        return torch.exp(self.log_tau)
+        return 1.0 + F.softplus(self.tau_unconstrained)
 
     def actual_weight(self) -> torch.Tensor:
         return cast(torch.Tensor, leaky_clamp(self.weight, 0, 1, 0.1))
@@ -126,11 +126,11 @@ class MultiLayerLogicGateNet(nn.Module):
         self.is_shared_tau = is_shared_tau
         self.use_softmax = use_softmax
 
-        shared_log_tau: float | nn.Parameter
+        shared_tau_unconstrained: float | nn.Parameter
         if is_shared_tau:
-            shared_log_tau = nn.Parameter(torch.tensor(float(init_log_tau)))
+            shared_tau_unconstrained = nn.Parameter(torch.tensor(float(init_log_tau)))
         else:
-            shared_log_tau = float(init_log_tau)
+            shared_tau_unconstrained = float(init_log_tau)
         self.expectation_layers: nn.ModuleList[OrGateLayer] = nn.ModuleList()
 
         current_dim = input_dim
@@ -139,7 +139,7 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = OrGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
-                shared_log_tau=shared_log_tau,
+                shared_tau_unconstrained=shared_tau_unconstrained,
                 use_softmax=use_softmax,
             )
             self.expectation_layers.append(layer)
