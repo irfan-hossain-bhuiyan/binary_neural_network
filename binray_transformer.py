@@ -2,89 +2,78 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from typing import cast
 from prelude import leaky_clamp
 from data_utils import generate_xor_dataset
 
 
-class InverterPass(nn.Module):
-    """Pass-through layer that concatenates inputs with their inverted values (1 - x).
+def pass_invert(x: torch.Tensor) -> torch.Tensor:
+    """Concatenate inputs with their inverted values (1 - x)."""
+    inverted = 1.0 - x
+    return torch.cat([x, inverted], dim=-1)
 
-    Given input x (batch_size, features), returns concat([x, 1 - x], dim=-1),
-    effectively doubling the feature dimension while preserving both the original
-    signal and its logical inversion.
+class OrGateLayer(nn.Module):
+    """Expectation layer that can operate in soft (softmax) or hard (argmax) mode.
+
+    Args:
+        in_features: input feature dimension
+        out_features: output feature dimension
+        shared_log_tau: if a float is provided (default), a new nn.Parameter is created
+            and owned by this layer (not shared). If an nn.Parameter is provided, it
+            will be used directly, enabling temperature sharing across layers.
+        use_softmax: if True, uses temperature-scaled softmax expectation; otherwise
+            uses hard max selection.
     """
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        inverted = 1.0 - x
-        return torch.cat([x, inverted], dim=-1)
-
-class ExpectationSoftmaxLayer(nn.Module):
-    """Custom layer with expectation-based softmax aggregation.
-    For each output neuron j:
-        z_j = w_j ⊙ x                      (elementwise product)
-        z_scaled_j = tau * z_j             (tau is a learnable scalar temperature)
-        p_j = softmax(z_scaled_j)          (over input dimension)
-        s_j = Σ_i p_j[i] * z_j[i]          (expectation w.r.t. original z_j)
-
-    This mimics a soft-argmax / soft-max operator, where tau controls how
-    close the behavior is to a hard max. No bias term is used.
-
-    This mimics or gate, and weight=1 for the the node is connected to or gate =0 if not.
-    Or gate because or(A)=max(A) if A has element 0 to 1 append.
-    And weight =0 makes weights*x =0 making or not having input
-    weights=1 makes the or gate to connect to previous node,
-    Then I invert it,to get nor gate.
-    """
-
-    def __init__(self, in_features: int, out_features: int,  shared_log_tau: torch.nn.Parameter):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        shared_log_tau: float | nn.Parameter = 0.0,
+        use_softmax: bool = False,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
+        self.use_softmax = use_softmax
 
-        # Weight shape: (out_features, in_features)
-        # These are unconstrained parameters; actual weights are sigmoid(weight)
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
-        # Learnable temperature scalar; higher -> closer to hard max
-        # If shared_log_tau is provided, all layers will use the same temperature
-        self.log_tau = shared_log_tau
 
+        if isinstance(shared_log_tau, nn.Parameter):
+            self.log_tau = shared_log_tau
+            self._owns_tau = False
+        else:
+            self.log_tau = nn.Parameter(torch.tensor(float(shared_log_tau)))
+            self._owns_tau = True
 
     @property
     def tau(self) -> torch.Tensor:
-        # TODO: Need some experiment,I think I will remove this and implement a simple scalar.
         return torch.exp(self.log_tau)
 
     def actual_weight(self) -> torch.Tensor:
-        return leaky_clamp(self.weight,0,1,0.1)
+        return cast(torch.Tensor, leaky_clamp(self.weight, 0, 1, 0.1))
+
+    def discretize(self, threshold: float) -> None:
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError(f"threshold must be in [0, 1], got {threshold}")
+        with torch.no_grad():
+            discrete_w = (self.actual_weight() >= threshold).float()
+            self.weight.copy_(discrete_w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
-
-        Args:
-            x: Tensor of shape (batch_size, in_features)
-
-        Returns:
-            Tensor of shape (batch_size, out_features)
-        """
-        # Constrain weights to [0, 1]
         actual_weight = self.actual_weight()
-
         # z: (batch_size, out_features, in_features)
         z = x.unsqueeze(1) * actual_weight.unsqueeze(0)
 
-        # Hard max over input dimension (last dim); tau retained but unused here
-        # Previously (softmax expectation):
-        # z_scaled = self.tau * z
-        # p = F.softmax(z_scaled, dim=-1)
-        # s = (p * z).sum(dim=-1)
-
-        # Hard max output
-        # s: (batch_size, out_features)
-        s = z.max(dim=-1).values
+        if self.use_softmax:
+            z_scaled = self.tau * z
+            p = F.softmax(z_scaled, dim=-1)
+            s = (p * z).sum(dim=-1)
+        else:
+            s = z.max(dim=-1).values
 
         return s
-
 
 def _collect_grad_norms(model: nn.Module) -> dict[str, float]:
     stats: dict[str, float] = {}
@@ -94,90 +83,137 @@ def _collect_grad_norms(model: nn.Module) -> dict[str, float]:
         stats[name] = param.grad.detach().norm().item()
     return stats
 
-
 def _format_grad_stats(stats: dict[str, float], max_items: int = 6) -> str:
     items = list(stats.items())[:max_items]
     return "; ".join(f"{k}: {v:.3e}" for k, v in items)
 
+def _detect_vanishing_grads(stats: dict[str, float], threshold: float = 1e-8) -> bool:
+    if not stats:
+        return True
+    return max(stats.values()) < threshold
 
-class XorExpectationNet(nn.Module):
-    """Network for 32-bit XOR using expectation-softmax layers with inverter passes.
+def resolve_device() -> torch.device:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = resolve_device()
 
-    Architecture (feature dims after each block):
-        64 -> 256 -> [concat with 1 - x -> 512] -> 128 -> [concat -> 256] -> 64 -> [concat -> 128] -> 32
-    """
+class MultiLayerLogicGateNet(nn.Module):
+    """Expectation-based multi-layer gate network with configurable depth and tau sharing."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        input_dim: int = 64,
+        layer_dims: list[int] | tuple[int, ...] = (256, 128, 64, 32),
+        is_shared_tau: bool = True,
+        init_log_tau: float = 0.0,
+        use_softmax: bool = False,
+    ):
         super().__init__()
-        # Shared temperature parameter for all layers
-        self.shared_log_tau = nn.Parameter(torch.zeros(1))
-        self.inv0 = InverterPass()
-        self.layer1 = ExpectationSoftmaxLayer(in_features=128, out_features=256, shared_log_tau=self.shared_log_tau)
-        self.inv1 = InverterPass()
-        self.layer2 = ExpectationSoftmaxLayer(in_features=512, out_features=128, shared_log_tau=self.shared_log_tau)
-        self.inv2 = InverterPass()
-        self.layer3 = ExpectationSoftmaxLayer(in_features=256, out_features=64, shared_log_tau=self.shared_log_tau)
-        self.inv3 = InverterPass()
-        self.layer4 = ExpectationSoftmaxLayer(in_features=128, out_features=32, shared_log_tau=self.shared_log_tau)
+        self.input_dim = input_dim
+        self.layer_dims = list(layer_dims)
+        self.is_shared_tau = is_shared_tau
+        self.use_softmax = use_softmax
+
+        shared_log_tau: float | nn.Parameter
+        if is_shared_tau:
+            shared_log_tau = nn.Parameter(torch.tensor(float(init_log_tau)))
+        else:
+            shared_log_tau = float(init_log_tau)
+        self.expectation_layers: nn.ModuleList[OrGateLayer] = nn.ModuleList()
+
+        current_dim = input_dim
+        for out_dim in self.layer_dims:
+            in_dim = current_dim * 2  # inverter doubles the features
+            layer = OrGateLayer(
+                in_features=in_dim,
+                out_features=out_dim,
+                shared_log_tau=shared_log_tau,
+                use_softmax=use_softmax,
+            )
+            self.expectation_layers.append(layer)
+            current_dim = out_dim
 
     @property
-    def tau(self) -> torch.Tensor:
-        return torch.exp(self.shared_log_tau)
+    def tau(self) -> torch.Tensor | list[torch.Tensor]:
+        if self.is_shared_tau:
+            return self.expectation_layers[0].tau
+        return [layer.tau for layer in self.expectation_layers]
+
+    def discretize(self, threshold: float) -> None:
+        for layer in self.expectation_layers:
+            if hasattr(layer, "discretize"):
+                layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch_size, 64)
-        x = self.inv0(x) 
-        x = self.layer1(x)
-        x = self.inv1(x)
-
-        x = self.layer2(x)
-        x = self.inv2(x)
-
-        x = self.layer3(x)
-        x = self.inv3(x)
-
-        x = self.layer4(x)
+        x = pass_invert(x)
+        for idx, layer in enumerate(self.expectation_layers):
+            x = layer(x)
+            if idx < len(self.expectation_layers) - 1:
+                x = pass_invert(x)
         return x
 
 def train_model(
     num_epochs: int = 20,
     batch_size: int = 128,
     train_samples: int = 10000,
-    lr: float = 1e-3,
     tau_reg_weight: float = 1e-3,
     weight_l1_reg: float = 0.0,
     binary_weight_reg: float = 0.0,
     log_gradients_every: int | None = None,
-    device: torch.device | None = None,
+    input_dim: int = 64,
+    is_shared_tau: bool = True,
+    init_log_tau: float = 0.0,
+    use_softmax: bool = False,
+    model: MultiLayerLogicGateNet | None = None,
+    optimizer: torch.optim.Optimizer | None = None,
+    loss_fn: nn.modules.loss._Loss | None = None,
 ):
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if model is None:
+        model = MultiLayerLogicGateNet(
+            input_dim=input_dim,
+            layer_dims=(256, 128, 64, 32),
+            is_shared_tau=is_shared_tau,
+            init_log_tau=init_log_tau,
+            use_softmax=use_softmax,
+        )
+    model = model.to(DEVICE)
 
-    model = XorExpectationNet().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    loss_fn = nn.BCELoss()
+    if optimizer is None:
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.25,betas=(0.5,0.5))
+    loss_fn = nn.BCELoss() if loss_fn is None else loss_fn
 
-    X, Y = generate_xor_dataset(train_samples, device=device)
+    X, Y = generate_xor_dataset(train_samples, device=DEVICE)
+    loss_history: list[float] = []
 
     for epoch in range(1, num_epochs + 1):
-        perm = torch.randperm(train_samples, device=device)
+        perm = torch.randperm(train_samples, device=DEVICE)
         X_epoch = X[perm]
         Y_epoch = Y[perm]
 
         epoch_loss = 0.0
         num_batches = 0
+        vanishing_warned = False
 
+        grad_msg = None
         for i in range(0, train_samples, batch_size):
             xb = X_epoch[i : i + batch_size]
             yb = Y_epoch[i : i + batch_size]
 
             optimizer.zero_grad()
             logits = model(xb)
-            reg_loss = tau_reg_weight / model.tau
+
+            if tau_reg_weight == 0.0:
+                reg_loss = 0.0
+            else:
+                if model.is_shared_tau:
+                    tau_tensor: torch.Tensor = cast(torch.Tensor, model.tau)
+                    reg_loss = tau_reg_weight / tau_tensor
+                else:
+                    taus: list[torch.Tensor] = cast(list[torch.Tensor], model.tau)
+                    reg_loss = tau_reg_weight * sum(1.0 / t for t in taus) / float(len(taus))
 
             weight_penalty = 0.0
             if weight_l1_reg > 0.0 or binary_weight_reg > 0.0:
-                for layer in (model.layer1, model.layer2, model.layer3):
+                for layer in model.expectation_layers:
                     actual_w = layer.actual_weight()
                     if weight_l1_reg > 0.0:
                         weight_penalty = weight_penalty + weight_l1_reg * actual_w.mean()
@@ -187,28 +223,56 @@ def train_model(
             loss = loss_fn(logits, yb) + reg_loss + weight_penalty
             loss.backward()
 
-            grad_msg = None
             if log_gradients_every is not None and epoch % log_gradients_every == 0 and i == 0:
                 grad_stats = _collect_grad_norms(model)
                 grad_msg = _format_grad_stats(grad_stats)
+            if not vanishing_warned:
+                grad_stats = _collect_grad_norms(model)
+                if _detect_vanishing_grads(grad_stats):
+                    print(f"[warn] epoch {epoch:03d} batch {i//batch_size:03d}: gradients near zero (max_norm < 1e-8)")
+                    vanishing_warned = True
 
             optimizer.step()
 
             epoch_loss += loss.item()
             num_batches += 1
 
+        with torch.no_grad():
+            for layer in model.expectation_layers:
+                layer.weight.clamp_(-2.0, 2.0)
+
         avg_loss = epoch_loss / num_batches
-        # Simple progress print; you can adapt to your logging style
-        if grad_msg:
-            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {model.tau.item():.3f} | grads: {grad_msg}")
+        loss_history.append(avg_loss)
+
+        if model.is_shared_tau:
+            tau_val: float | list[float] = cast(torch.Tensor, model.tau).item()
         else:
-            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {model.tau.item():.3f}")
+            taus = cast(list[torch.Tensor], model.tau)
+            tau_val = [t.item() for t in taus]
 
-    return model
+        if grad_msg:
+            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {tau_val} | grads: {grad_msg}")
+        else:
+            print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | tau = {tau_val}")
 
+    return model, loss_history
 
-def evaluate_bit_accuracy(model: nn.Module, num_samples: int = 2000, device: torch.device | None = None) -> float:
-    """Evaluate bitwise accuracy on a fresh XOR dataset."""
+def plot_training_loss(loss_history: list[float]):
+    plt.figure(figsize=(6, 4))
+    plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training Loss")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+def evaluate_bit_accuracy(
+    model: nn.Module,
+    threshold: float = 0.5,
+    num_samples: int = 2000,
+    device: torch.device | None = None,
+) -> float:
     if device is None:
         device = next(model.parameters()).device
 
@@ -216,17 +280,15 @@ def evaluate_bit_accuracy(model: nn.Module, num_samples: int = 2000, device: tor
     with torch.no_grad():
         X_test, Y_test = generate_xor_dataset(num_samples, device=device)
         logits = model(X_test)
-        probs = logits
-        preds = (probs >= 0.5).float()
+        preds = (logits >= threshold).float()
         correct_bits = (preds == Y_test).float().mean().item()
     model.train()
     return correct_bits
 
-
 def plot_weight_distribution(model: nn.Module, bins: int = 50):
     with torch.no_grad():
         weights = []
-        for layer in (model.layer1, model.layer2, model.layer3):
+        for layer in model.expectation_layers:
             weights.append(layer.actual_weight().detach().cpu().flatten())
     all_weights = torch.cat(weights)
 
@@ -237,13 +299,20 @@ def plot_weight_distribution(model: nn.Module, bins: int = 50):
     plt.title(f"Sigmoid(weight) distribution | mean={all_weights.mean():.3f}, std={all_weights.std():.3f}")
     plt.tight_layout()
     plt.show()
-def main(epochs=1000):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = train_model(num_epochs=epochs,device=device,tau_reg_weight=0.0,binary_weight_reg=0.001)
+
+def main(epochs: int = 1000):
+    model, loss_history = train_model(
+        num_epochs=epochs,
+        tau_reg_weight=0.0,
+        binary_weight_reg=0.001,
+    )
+    plot_training_loss(loss_history)
     plot_weight_distribution(model)
-    acc = evaluate_bit_accuracy(model, device=device)
+    acc = evaluate_bit_accuracy(model, device=DEVICE)
     print(f"Bitwise accuracy on XOR test set: {acc * 100:.2f}%")
+    return model
 
 
 if __name__ == "__main__":
     main(2000)
+
