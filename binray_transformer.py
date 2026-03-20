@@ -1,4 +1,5 @@
 import torch
+from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -6,9 +7,10 @@ from pathlib import Path
 from typing import Any, cast
 from rich.console import Console
 from rich.table import Table
-from prelude import leaky_clamp, split_dataset, train_model, Checkpoint, HistoryEntry, TrainConfig, save_training_checkpoint, load_training_checkpoint
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from prelude import DEVICE, leaky_clamp, split_dataset, train_model, Checkpoint, HistoryEntry, TrainConfig, save_training_checkpoint, load_training_checkpoint
 from data_utils import generate_xor_dataset, save_xor_dataset, load_xor_dataset
-
+from prelude import plot_weight_distribution
 
 def pass_invert(x: torch.Tensor) -> torch.Tensor:
     """Concatenate inputs with their inverted values (1 - x)."""
@@ -47,7 +49,7 @@ class OrGateLayer(nn.Module):
             self.tau_unconstrained = shared_tau_unconstrained
             self._owns_tau = False
         else:
-            self.tau_unconstrained = nn.Parameter(torch.tensor(float(shared_tau_unconstrained)))
+            self.tau_unconstrained = nn.Parameter(torch.tensor(float(shared_tau_unconstrained),device=DEVICE))
             self._owns_tau = True
 
     @property
@@ -78,12 +80,6 @@ class OrGateLayer(nn.Module):
 
         return s
 
-def detect_vanishing_grads(stats: dict[str, float], threshold: float = 1e-8) -> bool:
-    if not stats:
-        return True
-    return max(stats.values()) < threshold
-
-
 
 class MultiLayerLogicGateNet(nn.Module):
     """Expectation-based multi-layer gate network with configurable depth and tau sharing."""
@@ -104,7 +100,7 @@ class MultiLayerLogicGateNet(nn.Module):
 
         shared_tau_unconstrained: float | nn.Parameter
         if is_shared_tau:
-            shared_tau_unconstrained = nn.Parameter(torch.tensor(float(init_log_tau)))
+            shared_tau_unconstrained = nn.Parameter(torch.tensor(float(init_log_tau),device=DEVICE))
         else:
             shared_tau_unconstrained = float(init_log_tau)
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
@@ -120,6 +116,19 @@ class MultiLayerLogicGateNet(nn.Module):
             )
             self.expectation_layers.append(layer)
             current_dim = out_dim
+ 
+    def weight_constraint(self):
+        for layer in self.expectation_layers:
+            layer.weight.clamp_(-2.0, 2.0)
+    def regularization(self, l1_lambda=1e-4, disc_lambda=1e-4):
+        reg = torch.tensor(0.0, device=self.expectation_layers[0].weight.device)
+        for layer in self.expectation_layers:
+            w = layer.weight
+            l1_error = w.abs().mean()
+            disc_error = (w.abs() + (w - 1.0).abs()).mean()
+            reg += (l1_lambda * l1_error) + (disc_lambda * disc_error)
+        return reg
+
 
     @property
     def tau(self) -> torch.Tensor | list[torch.Tensor]:
@@ -129,8 +138,7 @@ class MultiLayerLogicGateNet(nn.Module):
 
     def discretize(self, threshold: float) -> None:
         for layer in self.expectation_layers:
-            if hasattr(layer, "discretize"):
-                layer.discretize(threshold)
+            layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = pass_invert(x)
@@ -190,31 +198,24 @@ def main(epochs: int = 1000):
         init_log_tau=0.0,
         use_softmax=True,
     )
-    
-    def weight_constraint(m):
-        with torch.no_grad():
-            for layer in m.expectation_layers:
-                layer.weight.clamp_(-2.0, 2.0)
-
-    def no_regularization(m):
-        return 0.0
-
-    model, loss_history, history, checkpoint = train_model(
+    checkpoint = train_model(
         dataset=(x_all, y_all),
         num_epochs=epochs,
         batch_size=128,
         model=net,
         loss_fn=nn.BCELoss(),
-        regularization_fn=no_regularization,
-        constraint=weight_constraint,
+        regularization_fn=net.regularization,
+        lr_schedular=CosineAnnealingWarmRestarts,
+        lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-4},
+        constraint=net.weight_constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device
     )
-    plot_training_loss(loss_history)
-    plot_weight_distribution(model)
-    acc = evaluate_bit_accuracy(model, device=device, x_test=x_test, y_test=y_test)
+    plot_training_loss(checkpoint.get_avg_losses())
+    plot_weight_distribution(checkpoint.model)
+    acc = evaluate_bit_accuracy(checkpoint.model, device=device, x_test=x_test, y_test=y_test)
     print(f"Bitwise accuracy on XOR test set: {acc * 100:.2f}%")
-    return model, history, checkpoint
+    return checkpoint
 
 
 if __name__ == "__main__":

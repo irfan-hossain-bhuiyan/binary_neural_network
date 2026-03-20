@@ -30,6 +30,10 @@ class Checkpoint:
     train_config: TrainConfig
     training_history: list[HistoryEntry]
 
+    def get_avg_losses(self) -> list[float]:
+        return [entry.avg_loss for entry in self.training_history]
+
+
 
 
 def save_training_checkpoint(checkpoint: Checkpoint, filepath: Path) -> None:
@@ -161,6 +165,8 @@ def train_model(
     x_data, y_data = dataset
     # Pass test_verify_ratio to split_dataset if accepted by the function
     x_train, y_train, x_test, y_test = split_dataset(x_data, y_data, train_ratio=test_verify_ratio)
+    x_train = x_train.to(device)
+    y_train = y_train.to(device)
     train_count = x_train.shape[0]
 
     loss_history: list[float] = []
@@ -182,7 +188,7 @@ def train_model(
             xb = X_epoch[i : i + batch_size]
             yb = Y_epoch[i : i + batch_size]
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             logits = model(xb)
 
             reg_loss = 0.0
@@ -200,9 +206,9 @@ def train_model(
                         batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
 
             optimizer.step()
-
             if constraint is not None:
-                constraint()
+                with torch.no_grad():
+                    constraint()
 
             epoch_loss += loss.item()
             num_batches += 1
