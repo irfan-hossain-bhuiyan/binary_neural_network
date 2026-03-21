@@ -180,8 +180,6 @@ def train_model(
         epoch_loss = 0.0
         num_batches = 0
 
-        grad_stats_first_batch: dict[str, float] | None = None
-        epoch_vanishing = False
         batch_grad_norms: dict[str, float] = {}
         
         for i in range(0, train_count, batch_size):
@@ -202,7 +200,8 @@ def train_model(
                 # Calculate gradient norms for the batches
                 for name, param in model.named_parameters():
                     if param.grad is not None:
-                        norm = param.grad.detach().norm(2).item()
+                        # Use mean absolute gradient instead of sum-based norm to check gradient health independently of layer size
+                        norm = param.grad.detach().abs().mean().item()
                         batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
 
             optimizer.step()

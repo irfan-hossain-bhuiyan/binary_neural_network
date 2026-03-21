@@ -183,7 +183,7 @@ def evaluate_bit_accuracy(
     model.train()
     return correct_bits
 
-def main(epochs: int = 1000):
+def main(epochs: int = 50):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -210,7 +210,7 @@ def main(epochs: int = 1000):
         optimizer_kwargs= {"betas":(0.5,0.5)},
         regularization_fn=net.regularization,
         lr_schedular=CosineAnnealingWarmRestarts,
-        lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-4},
+        lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-3},
         constraint=net.weight_constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,
