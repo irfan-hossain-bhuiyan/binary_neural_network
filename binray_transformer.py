@@ -225,6 +225,7 @@ def evaluate_bit_accuracy(
     return correct_bits
 
 def main(epochs: int = 50):
+    print("checking if new code get updated")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
