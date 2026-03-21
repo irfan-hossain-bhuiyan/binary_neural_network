@@ -144,7 +144,8 @@ def train_model(
     lr_schedular_kargs: Dict[str, Any] | None = None,
     device=DEVICE,
     test_verify_ratio=0.8,
-    check_grad: bool = False
+    check_grad: bool = False,
+    peek: Callable[[], Dict[str, Any]] | None = None
 ):
     model = model.to(device)
 
@@ -217,6 +218,20 @@ def train_model(
 
         avg_loss = epoch_loss / num_batches
         loss_history.append(avg_loss)
+        
+        peek_info = ""
+        if peek is not None:
+            peek_results = peek()
+            formatted_peeks = []
+            for k, v in peek_results.items():
+                if isinstance(v, float):
+                    formatted_peeks.append(f"{k} = {v:.6f}")
+                else:
+                    formatted_peeks.append(f"{k} = {v}")
+            if formatted_peeks:
+                peek_info = " | " + " | ".join(formatted_peeks)
+
+        CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}{peek_info}")
         
         avg_grad_norms = {}
         if check_grad:

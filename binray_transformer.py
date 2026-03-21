@@ -141,6 +141,16 @@ class MultiLayerLogicGateNet(nn.Module):
         return reg
 
 
+    def peek(self) -> dict[str, Any]:
+        result = {}
+        with torch.no_grad():
+            if self.is_shared_tau:
+                result["shared_tau"] = self.expectation_layers[0].tau.item()
+            else:
+                for i, layer in enumerate(self.expectation_layers):
+                    result[f"tau_{i}"] = layer.tau.item()
+        return result
+
     @property
     def tau(self) -> torch.Tensor | list[torch.Tensor]:
         if self.is_shared_tau:
@@ -230,8 +240,8 @@ def main(epochs: int = 50):
         num_epochs=epochs,
         batch_size=128,
         model=net,
-        loss_fn=nn.MSELoss(),
-        lr=0.25,
+        loss_fn=nn.BCELoss(),
+        lr=0.1,
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.5,0.5)},
         regularization_fn=net.regularization,
@@ -241,11 +251,10 @@ def main(epochs: int = 50):
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,
         check_grad=True,
+        peek=net.peek
     )
     plot_training_loss(checkpoint.get_avg_losses())
     plot_weight_distribution(checkpoint.model)
-    acc = evaluate_bit_accuracy(checkpoint.model, device=device, x_test=x_test, y_test=y_test)
-    print(f"Bitwise accuracy on XOR test set: {acc * 100:.2f}%")
     return checkpoint
 
 
