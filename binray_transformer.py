@@ -45,7 +45,7 @@ class OrGateLayer(nn.Module):
         self.use_softmax = use_softmax
         self.should_scale_grad = should_scale_grad
         # Compute gradient scale based on square root of the input dimension
-        self.grad_scale = float(in_features ** 0.5) if should_scale_grad else 1.0
+        self.grad_scale = float(in_features) if should_scale_grad else 1.0
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
