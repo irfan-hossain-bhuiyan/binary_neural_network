@@ -199,18 +199,24 @@ def evaluate_bit_accuracy(
             Y_test = y_test.to(device)
             
         # evaluate in batches to prevent OutOfMemory errors on evaluation
-        batch_size = 500
+        batch_size = 200
         correct_bits_sum = 0.0
         total_samples = X_test.size(0)
         
-        for i in range(0, total_samples, batch_size):
-            X_batch = X_test[i:i+batch_size]
-            Y_batch = Y_test[i:i+batch_size]
-            
-            logits = model(X_batch)
-            preds = (logits >= threshold).float()
-            
-            correct_bits_sum += (preds == Y_batch).float().sum().item()
+        with torch.no_grad():
+            for i in range(0, total_samples, batch_size):
+                X_batch = X_test[i:i+batch_size]
+                Y_batch = Y_test[i:i+batch_size]
+                
+                logits = model(X_batch)
+                preds = (logits >= threshold).float()
+                
+                correct_bits_sum += (preds == Y_batch).float().sum().item()
+                
+                # Proactively clear VRAM in tight loops
+                del logits, preds, X_batch, Y_batch
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
             
         # Compute exact mean based on total bits processed
         total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
