@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from rich.console import Console
 from rich.table import Table
+from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from prelude import DEVICE, leaky_clamp, split_dataset, train_model, Checkpoint, HistoryEntry, TrainConfig, save_training_checkpoint, load_training_checkpoint
 from data_utils import generate_xor_dataset, save_xor_dataset, load_xor_dataset
@@ -203,13 +204,17 @@ def main(epochs: int = 1000):
         num_epochs=epochs,
         batch_size=128,
         model=net,
-        loss_fn=nn.BCELoss(),
+        loss_fn=nn.MSELoss(),
+        lr=0.25,
+        optimizer_cls= Adam,
+        optimizer_kwargs= {"betas":(0.5,0.5)},
         regularization_fn=net.regularization,
         lr_schedular=CosineAnnealingWarmRestarts,
         lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-4},
         constraint=net.weight_constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
-        device=device
+        device=device,
+        check_grad=True,
     )
     plot_training_loss(checkpoint.get_avg_losses())
     plot_weight_distribution(checkpoint.model)
