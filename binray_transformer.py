@@ -37,11 +37,15 @@ class OrGateLayer(nn.Module):
         out_features: int,
         shared_tau_unconstrained: float | nn.Parameter = 0.0,
         use_softmax: bool = False,
+        should_scale_grad: bool = True,
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.use_softmax = use_softmax
+        self.should_scale_grad = should_scale_grad
+        # Compute gradient scale based on square root of the input dimension
+        self.grad_scale = float(in_features ** 0.5) if should_scale_grad else 1.0
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
@@ -71,13 +75,16 @@ class OrGateLayer(nn.Module):
         actual_weight = self.actual_weight()
         # z: (batch_size, out_features, in_features)
         z = x.unsqueeze(1) * actual_weight.unsqueeze(0)
-
         if self.use_softmax:
             z_scaled = self.tau * z
             p = F.softmax(z_scaled, dim=-1)
             s = (p * z).sum(dim=-1)
         else:
             s = z.max(dim=-1).values
+
+        if self.should_scale_grad:
+            if s.requires_grad:
+                s.register_hook(lambda grad: grad * self.grad_scale)
 
         return s
 
@@ -92,12 +99,14 @@ class MultiLayerLogicGateNet(nn.Module):
         is_shared_tau: bool = True,
         init_log_tau: float = 0.0,
         use_softmax: bool = False,
+        should_scale_grad_per_layer: bool = True,
     ):
         super().__init__()
         self.input_dim = input_dim
         self.layer_dims = list(layer_dims)
         self.is_shared_tau = is_shared_tau
         self.use_softmax = use_softmax
+        self.should_scale_grad_per_layer = should_scale_grad_per_layer
 
         shared_tau_unconstrained: float | nn.Parameter
         if is_shared_tau:
@@ -114,6 +123,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 out_features=out_dim,
                 shared_tau_unconstrained=shared_tau_unconstrained,
                 use_softmax=use_softmax,
+                should_scale_grad=self.should_scale_grad_per_layer,
             )
             self.expectation_layers.append(layer)
             current_dim = out_dim
@@ -177,9 +187,24 @@ def evaluate_bit_accuracy(
         else:
             X_test = x_test.to(device)
             Y_test = y_test.to(device)
-        logits = model(X_test)
-        preds = (logits >= threshold).float()
-        correct_bits = (preds == Y_test).float().mean().item()
+            
+        # evaluate in batches to prevent OutOfMemory errors on evaluation
+        batch_size = 500
+        correct_bits_sum = 0.0
+        total_samples = X_test.size(0)
+        
+        for i in range(0, total_samples, batch_size):
+            X_batch = X_test[i:i+batch_size]
+            Y_batch = Y_test[i:i+batch_size]
+            
+            logits = model(X_batch)
+            preds = (logits >= threshold).float()
+            
+            correct_bits_sum += (preds == Y_batch).float().sum().item()
+            
+        # Compute exact mean based on total bits processed
+        total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
+        correct_bits = correct_bits_sum / total_bits
     model.train()
     return correct_bits
 
@@ -198,6 +223,7 @@ def main(epochs: int = 50):
         is_shared_tau=False,
         init_log_tau=0.0,
         use_softmax=True,
+        should_scale_grad_per_layer=True,
     )
     checkpoint = train_model(
         dataset=(x_all, y_all),
