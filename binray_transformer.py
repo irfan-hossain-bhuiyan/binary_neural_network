@@ -103,6 +103,7 @@ class MultiLayerLogicGateNet(nn.Module):
         # None for default prefered value
         use_softmax: bool = False,
         should_scale_grad_per_layer: bool = False,
+        only_inverter=False,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -110,13 +111,12 @@ class MultiLayerLogicGateNet(nn.Module):
         self.use_softmax = use_softmax
         self.is_shared_tau = isinstance(init_log_tau,nn.Parameter)
         self.should_scale_grad_per_layer = should_scale_grad_per_layer
-
+        self.only_inverter=only_inverter
         shared_tau_unconstrained: None | nn.Parameter |float= init_log_tau
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
 
-        current_dim = input_dim
+        in_dim = input_dim *2 # As the first one passes to an inverter.
         for out_dim in self.layer_dims:
-            in_dim = current_dim * 2  # inverter doubles the features
             layer = OrGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
@@ -125,7 +125,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 should_scale_grad=self.should_scale_grad_per_layer,
             )
             self.expectation_layers.append(layer)
-            current_dim = out_dim
+            in_dim = out_dim * (1 if only_inverter else 2) # inverter doubles the features
  
     def weight_constraint(self):
         for layer in self.expectation_layers:
@@ -165,7 +165,7 @@ class MultiLayerLogicGateNet(nn.Module):
         for idx, layer in enumerate(self.expectation_layers):
             x = layer(x)
             if idx < len(self.expectation_layers) - 1:
-                x = pass_invert(x)
+                x = (1-x) if self.only_inverter else pass_invert(x)
         return x
 
 def plot_training_loss(loss_history: list[float]):
@@ -205,7 +205,7 @@ def main(epochs: int = 50):
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.5,0.5)},
         regularization_fn=net.regularization,
-        lr_schedular=CosineAnnealingWarmRestarts,
+        lr_schedular=None, #CosineAnnealingWarmRestarts,
         lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-3},
         constraint=net.weight_constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
