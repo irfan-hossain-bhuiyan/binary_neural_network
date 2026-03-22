@@ -133,7 +133,7 @@ def train_model(
     num_epochs: int,
     batch_size: int,
     model: torch.nn.Module,
-    loss_fn: nn.modules.loss._Loss | None = None,
+    loss_fn: nn.modules.loss._Loss= nn.MSELoss(),
     regularization_fn: Callable[[], torch.Tensor] | None = None,
     checkpoint_path: Path | None = None,
     optimizer_kwargs: Dict[str, Any] | None = None,
@@ -143,7 +143,6 @@ def train_model(
     constraint: None | Callable = None,
     lr_schedular_kargs: Dict[str, Any] = {},
     device=DEVICE,
-    test_verify_ratio=0.8,
     check_grad: bool = False,
     peek: Callable[[], Dict[str, Any]] | None = None
 ):
@@ -153,7 +152,6 @@ def train_model(
         optimizer_kwargs = {"lr": lr}
        
     optimizer = optimizer_cls(model.parameters(), **optimizer_kwargs)
-    loss_fn = nn.MSELoss() if loss_fn is None else loss_fn
 
     if lr_schedular is not None:
         scheduler = lr_schedular(optimizer, **lr_schedular_kargs)
@@ -161,10 +159,8 @@ def train_model(
         scheduler = None
         
     x_data, y_data = dataset
-    # Pass test_verify_ratio to split_dataset if accepted by the function
-    x_train, y_train, x_test, y_test = split_dataset(x_data, y_data, train_ratio=test_verify_ratio)
-    x_train = x_train.to(device)
-    y_train = y_train.to(device)
+    x_train = x_data.to(device)
+    y_train = y_data.to(device)
     train_count = x_train.shape[0]
 
     loss_history: list[float] = []
@@ -242,8 +238,6 @@ def train_model(
                 avg_grad_norms[name] = avg_val
                 # Use string formatting for the table
                 table.add_row(name, f"{avg_val:.6f}")
-
-        CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}")
         
         if check_grad:
             CONSOLE.print(table)
@@ -310,5 +304,42 @@ def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
 
     plt.tight_layout()
     plt.show()
+
+def testing(
+    model: nn.Module,
+    dataset:Tuple[Tensor,Tensor],
+    threshold: float = 0.5,
+    # threshold is for what value it will be treated as 1.
+    num_samples: int = 2000,
+    device: torch.device=DEVICE,
+) -> float:
+    x_test,y_test=dataset
+    model.eval()
+    with torch.no_grad():
+        
+        X_test = x_test.to(device)
+        Y_test = y_test.to(device)
+            
+        # evaluate in batches to prevent OutOfMemory errors on evaluation
+        batch_size = 200
+        correct_bits_sum = 0.0
+        total_samples = X_test.size(0)
+        
+        with torch.no_grad():
+            for i in range(0, total_samples, batch_size):
+                X_batch = X_test[i:i+batch_size]
+                Y_batch = Y_test[i:i+batch_size]
+                
+                logits = model(X_batch)
+                preds = (logits >= threshold).float()
+                
+                correct_bits_sum += (preds == Y_batch).float().sum().item()
+                
+                            
+        # Compute exact mean based on total bits processed
+        total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
+        correct_bits = correct_bits_sum / total_bits
+    model.train()
+    return correct_bits
 
 

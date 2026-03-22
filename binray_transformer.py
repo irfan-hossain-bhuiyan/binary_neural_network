@@ -52,7 +52,7 @@ class OrGateLayer(nn.Module):
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
         if tau is None:
-            self.tau_unconstrained =nn.Parameter(torch.tensor(log(3*in_features)-1))
+            self.tau_unconstrained =nn.Parameter(torch.tensor(log(in_features)+1))
         elif isinstance(tau,float):
             self.tau_unconstrained =nn.Parameter(torch.tensor(tau))
         else:
@@ -102,7 +102,7 @@ class MultiLayerLogicGateNet(nn.Module):
         # float if all of them are isolated
         # None for default prefered value
         use_softmax: bool = False,
-        should_scale_grad_per_layer: bool = True,
+        should_scale_grad_per_layer: bool = False,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -177,43 +177,6 @@ def plot_training_loss(loss_history: list[float]):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.show()
-
-def testing(
-    model: nn.Module,
-    dataset:Tuple[Tensor,Tensor],
-    threshold: float = 0.5,
-    # threshold is for what value it will be treated as 1.
-    num_samples: int = 2000,
-    device: torch.device=DEVICE,
-) -> float:
-    x_test,y_test=dataset
-    model.eval()
-    with torch.no_grad():
-        
-        X_test = x_test.to(device)
-        Y_test = y_test.to(device)
-            
-        # evaluate in batches to prevent OutOfMemory errors on evaluation
-        batch_size = 200
-        correct_bits_sum = 0.0
-        total_samples = X_test.size(0)
-        
-        with torch.no_grad():
-            for i in range(0, total_samples, batch_size):
-                X_batch = X_test[i:i+batch_size]
-                Y_batch = Y_test[i:i+batch_size]
-                
-                logits = model(X_batch)
-                preds = (logits >= threshold).float()
-                
-                correct_bits_sum += (preds == Y_batch).float().sum().item()
-                
-                            
-        # Compute exact mean based on total bits processed
-        total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
-        correct_bits = correct_bits_sum / total_bits
-    model.train()
-    return correct_bits
 
 def main(epochs: int = 50):
     print("checking if new code get updated")
