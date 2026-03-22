@@ -4,7 +4,7 @@ import torch
 from pathlib import Path
 from dataclasses import dataclass
 from torch import nn
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List,Tuple
 import matplotlib.pyplot as plt
 
 from torch._prims_common import Tensor
@@ -129,7 +129,7 @@ def _loss_name(loss_fn: nn.modules.loss._Loss) -> str:
 from torch import nn
 
 def train_model(
-    dataset: tuple[torch.Tensor, torch.Tensor],
+    dataset: Tuple[torch.Tensor, torch.Tensor],
     num_epochs: int,
     batch_size: int,
     model: torch.nn.Module,
