@@ -1,10 +1,12 @@
+from inspect import Parameter
+from math import log
 import torch
 from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Tuple, cast
 from rich.console import Console
 from rich.table import Table
 from torch.optim import Adam
@@ -35,9 +37,9 @@ class OrGateLayer(nn.Module):
         self,
         in_features: int,
         out_features: int,
-        shared_tau_unconstrained: float | nn.Parameter = 0.0,
+        tau: float|nn.Parameter|None = None,
         use_softmax: bool = False,
-        should_scale_grad: bool = True,
+        should_scale_grad: bool = False,
     ):
         super().__init__()
         self.in_features = in_features
@@ -49,14 +51,13 @@ class OrGateLayer(nn.Module):
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.xavier_normal_(self.weight)
-
-        if isinstance(shared_tau_unconstrained, nn.Parameter):
-            self.tau_unconstrained = shared_tau_unconstrained
-            self._owns_tau = False
+        if tau is None:
+            self.tau_unconstrained =nn.Parameter(torch.tensor(log(3*in_features)-1))
+        elif isinstance(tau,float):
+            self.tau_unconstrained =nn.Parameter(torch.tensor(tau))
         else:
-            self.tau_unconstrained = nn.Parameter(torch.tensor(float(shared_tau_unconstrained),device=DEVICE))
-            self._owns_tau = True
-
+            self.tau_unconstrained = tau
+        
     @property
     def tau(self) -> torch.Tensor:
         return 1.0 + F.softplus(self.tau_unconstrained)
@@ -96,23 +97,21 @@ class MultiLayerLogicGateNet(nn.Module):
         self,
         input_dim: int = 64,
         layer_dims: list[int] | tuple[int, ...] = (256, 128, 64, 32),
-        is_shared_tau: bool = True,
-        init_log_tau: float = 0.0,
+        init_log_tau:nn.Parameter |float|None = None,
+        # Parameter is the tau is shared.
+        # float if all of them are isolated
+        # None for default prefered value
         use_softmax: bool = False,
         should_scale_grad_per_layer: bool = True,
     ):
         super().__init__()
         self.input_dim = input_dim
         self.layer_dims = list(layer_dims)
-        self.is_shared_tau = is_shared_tau
         self.use_softmax = use_softmax
+        self.is_shared_tau = isinstance(init_log_tau,nn.Parameter)
         self.should_scale_grad_per_layer = should_scale_grad_per_layer
 
-        shared_tau_unconstrained: float | nn.Parameter
-        if is_shared_tau:
-            shared_tau_unconstrained = nn.Parameter(torch.tensor(float(init_log_tau),device=DEVICE))
-        else:
-            shared_tau_unconstrained = float(init_log_tau)
+        shared_tau_unconstrained: None | nn.Parameter |float= init_log_tau
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
 
         current_dim = input_dim
@@ -121,7 +120,7 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = OrGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
-                shared_tau_unconstrained=shared_tau_unconstrained,
+                tau=shared_tau_unconstrained,
                 use_softmax=use_softmax,
                 should_scale_grad=self.should_scale_grad_per_layer,
             )
@@ -179,24 +178,20 @@ def plot_training_loss(loss_history: list[float]):
     plt.tight_layout()
     plt.show()
 
-def evaluate_bit_accuracy(
+def testing(
     model: nn.Module,
+    dataset:Tuple[Tensor,Tensor],
     threshold: float = 0.5,
+    # threshold is for what value it will be treated as 1.
     num_samples: int = 2000,
-    device: torch.device | None = None,
-    x_test: torch.Tensor | None = None,
-    y_test: torch.Tensor | None = None,
+    device: torch.device=DEVICE,
 ) -> float:
-    if device is None:
-        device = next(model.parameters()).device
-
+    x_test,y_test=dataset
     model.eval()
     with torch.no_grad():
-        if x_test is None or y_test is None:
-            X_test, Y_test = generate_xor_dataset(num_samples, device=device)
-        else:
-            X_test = x_test.to(device)
-            Y_test = y_test.to(device)
+        
+        X_test = x_test.to(device)
+        Y_test = y_test.to(device)
             
         # evaluate in batches to prevent OutOfMemory errors on evaluation
         batch_size = 200
@@ -213,11 +208,7 @@ def evaluate_bit_accuracy(
                 
                 correct_bits_sum += (preds == Y_batch).float().sum().item()
                 
-                # Proactively clear VRAM in tight loops
-                del logits, preds, X_batch, Y_batch
-                if device.type == 'cuda':
-                    torch.cuda.empty_cache()
-            
+                            
         # Compute exact mean based on total bits processed
         total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
         correct_bits = correct_bits_sum / total_bits
@@ -237,13 +228,12 @@ def main(epochs: int = 50):
     net = MultiLayerLogicGateNet(
         input_dim=64,
         layer_dims=(256, 128, 64, 32),
-        is_shared_tau=False,
-        init_log_tau=0.0,
+        init_log_tau=None,
         use_softmax=True,
         should_scale_grad_per_layer=True,
     )
     checkpoint = train_model(
-        dataset=(x_all, y_all),
+        dataset=(x_train, y_train),
         num_epochs=epochs,
         batch_size=128,
         model=net,

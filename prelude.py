@@ -141,7 +141,7 @@ def train_model(
     lr: float = 0.1,
     lr_schedular: Callable[..., torch.optim.lr_scheduler.LRScheduler] | Any | None = None,
     constraint: None | Callable = None,
-    lr_schedular_kargs: Dict[str, Any] | None = None,
+    lr_schedular_kargs: Dict[str, Any] = {},
     device=DEVICE,
     test_verify_ratio=0.8,
     check_grad: bool = False,
@@ -154,9 +154,6 @@ def train_model(
        
     optimizer = optimizer_cls(model.parameters(), **optimizer_kwargs)
     loss_fn = nn.MSELoss() if loss_fn is None else loss_fn
-
-    if lr_schedular_kargs is None:
-        lr_schedular_kargs = {}
 
     if lr_schedular is not None:
         scheduler = lr_schedular(optimizer, **lr_schedular_kargs)
