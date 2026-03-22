@@ -50,7 +50,7 @@ class OrGateLayer(nn.Module):
         self.grad_scale = float(in_features**0.5) if should_scale_grad else 1.0
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        nn.init.xavier_normal_(self.weight)
+        nn.init.normal_(self.weight)
         if tau is None:
             self.tau_unconstrained =nn.Parameter(torch.tensor(log(in_features)+1))
         elif isinstance(tau,float):
