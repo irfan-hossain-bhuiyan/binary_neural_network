@@ -1,18 +1,14 @@
-from inspect import Parameter
 from math import log
+import copy
 import torch
-from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Any, Tuple, cast
-from rich.console import Console
-from rich.table import Table
+from typing import Any, cast
 from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
-from prelude import DEVICE, leaky_clamp, split_dataset, train_model, Checkpoint, HistoryEntry, TrainConfig, save_training_checkpoint, load_training_checkpoint
-from data_utils import generate_xor_dataset, save_xor_dataset, load_xor_dataset
+from prelude import DEVICE, leaky_clamp, train_model, split_dataset
+from data_utils import save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
 def pass_invert(x: torch.Tensor) -> torch.Tensor:
@@ -31,13 +27,17 @@ class OrGateLayer(nn.Module):
             will be used directly, enabling temperature sharing across layers.
         use_softmax: if True, uses temperature-scaled softmax expectation; otherwise
             uses hard max selection.
+        max_threshold: Used when softmax is used,It make a upper floor for the softmax function,Say if 
+        in or gate rest of the input are 0 and one is 1,(output should be 1),but softmax doesn't make that,
+        This parameter sets what is the minimum truth value will be in that scenerio.
     """
 
     def __init__(
         self,
         in_features: int,
         out_features: int,
-        tau: float|nn.Parameter|None = None,
+        max_threshold: float = 0.9,
+        tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
         should_scale_grad: bool = False,
     ):
@@ -51,16 +51,14 @@ class OrGateLayer(nn.Module):
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.normal_(self.weight)
-        if tau is None:
-            self.tau_unconstrained =nn.Parameter(torch.tensor(log(in_features)+1))
-        elif isinstance(tau,float):
-            self.tau_unconstrained =nn.Parameter(torch.tensor(tau))
+        if isinstance(tau,nn.Parameter):
+            self.tau_adder=tau
         else:
-            self.tau_unconstrained = tau
-        
+            self.tau_adder=nn.Parameter(torch.tensor(tau))
+        self.tau_floor=log(in_features-1)+log(max_threshold)-log(1-max_threshold)
     @property
     def tau(self) -> torch.Tensor:
-        return 1.0 + F.softplus(self.tau_unconstrained)
+        return self.tau_floor + F.leaky_relu(self.tau_adder,negative_slope=0.05)
 
     def actual_weight(self) -> torch.Tensor:
         return cast(torch.Tensor, leaky_clamp(self.weight, 0, 1, 0.1))
@@ -97,7 +95,8 @@ class MultiLayerLogicGateNet(nn.Module):
         self,
         input_dim: int = 64,
         layer_dims: list[int] | tuple[int, ...] = (256, 128, 64, 32),
-        init_log_tau:nn.Parameter |float|None = None,
+        init_tau_param:nn.Parameter |float = 0.0,
+        max_threshold:float =0.9,
         # Parameter is the tau is shared.
         # float if all of them are isolated
         # None for default prefered value
@@ -109,10 +108,9 @@ class MultiLayerLogicGateNet(nn.Module):
         self.input_dim = input_dim
         self.layer_dims = list(layer_dims)
         self.use_softmax = use_softmax
-        self.is_shared_tau = isinstance(init_log_tau,nn.Parameter)
+        self.is_shared_tau = isinstance(init_tau_param,nn.Parameter)
         self.should_scale_grad_per_layer = should_scale_grad_per_layer
         self.only_inverter=only_inverter
-        shared_tau_unconstrained: None | nn.Parameter |float= init_log_tau
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
 
         in_dim = input_dim *2 # As the first one passes to an inverter.
@@ -120,44 +118,54 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = OrGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
-                tau=shared_tau_unconstrained,
+                tau=init_tau_param,
                 use_softmax=use_softmax,
+                max_threshold=max_threshold,
                 should_scale_grad=self.should_scale_grad_per_layer,
             )
             self.expectation_layers.append(layer)
             in_dim = out_dim * (1 if only_inverter else 2) # inverter doubles the features
  
+    def clone(self):
+        return copy.deepcopy(self)
+
     def weight_constraint(self):
         for layer in self.expectation_layers:
+            layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-2.0, 2.0)
-    def regularization(self, l1_lambda=1e-4, disc_lambda=1e-4):
-        reg = torch.tensor(0.0, device=self.expectation_layers[0].weight.device)
+    
+    def regularization(self, l1_lambda=1e-3, disc_lambda=1e-3):
+        reg = torch.tensor(0.0, device=DEVICE)
         for layer in self.expectation_layers:
+            layer = cast(OrGateLayer, layer)
             w = layer.weight
-            l1_error = w.abs().mean()
-            disc_error = (w.abs() + (w - 1.0).abs()).mean()
+            l1_error = w.relu().mean()
+            disc_error = (0.5-(w-0.5).abs()).relu().mean()
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error)
         return reg
-
 
     def peek(self) -> dict[str, Any]:
         result = {}
         with torch.no_grad():
             if self.is_shared_tau:
-                result["shared_tau"] = self.expectation_layers[0].tau.item()
+                first_layer = cast(OrGateLayer, self.expectation_layers[0])
+                result["shared_tau"] = first_layer.tau.item()
             else:
                 for i, layer in enumerate(self.expectation_layers):
+                    layer = cast(OrGateLayer, layer)
                     result[f"tau_{i}"] = layer.tau.item()
         return result
 
     @property
     def tau(self) -> torch.Tensor | list[torch.Tensor]:
         if self.is_shared_tau:
-            return self.expectation_layers[0].tau
-        return [layer.tau for layer in self.expectation_layers]
+            first_layer = cast(OrGateLayer, self.expectation_layers[0])
+            return first_layer.tau
+        return [cast(OrGateLayer, layer).tau for layer in self.expectation_layers]
 
     def discretize(self, threshold: float) -> None:
         for layer in self.expectation_layers:
+            layer = cast(OrGateLayer, layer)
             layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -186,12 +194,11 @@ def main(epochs: int = 50):
         save_xor_dataset(dataset_path, num_samples=100000)
 
     x_all, y_all = load_xor_dataset(dataset_path, device=device)
-    x_train, y_train, x_test, y_test = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
+    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
 
     net = MultiLayerLogicGateNet(
         input_dim=64,
         layer_dims=(256, 128, 64, 32),
-        init_log_tau=None,
         use_softmax=True,
         should_scale_grad_per_layer=True,
     )

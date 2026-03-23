@@ -305,6 +305,59 @@ def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
     plt.tight_layout()
     plt.show()
 
+def plot_checkpoints(checkpoints: list[Checkpoint], title: str = "Checkpoint Comparison"):
+    if not checkpoints:
+        return
+
+    num_checkpoints = len(checkpoints)
+
+    loss_data = []
+    labels = []
+    
+    for i, ckpt in enumerate(checkpoints):
+        losses = ckpt.get_avg_losses()
+        c = ckpt.train_config
+        opt = c.optimizer_cls
+        lr = c.lr
+        loss_fn = c.loss_fn
+        label = f"Ckpt {i+1} (LR={lr}, Opt={opt}, Loss={loss_fn})"
+        loss_data.append(losses)
+        labels.append(label)
+
+    fig = plt.figure(figsize=(12, 6 + 4 * num_checkpoints))
+    gs = fig.add_gridspec(num_checkpoints + 1, 1)
+
+    ax_loss = fig.add_subplot(gs[0, 0])
+    for i, losses in enumerate(loss_data):
+        ax_loss.plot(range(1, len(losses) + 1), losses, linewidth=2, label=labels[i])
+    
+    ax_loss.set_xlabel("Epoch")
+    ax_loss.set_ylabel("Loss")
+    ax_loss.set_title(f"{title} - Loss Curves")
+    ax_loss.grid(alpha=0.3)
+    ax_loss.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    for i, ckpt in enumerate(checkpoints):
+        ax_weights = fig.add_subplot(gs[i + 1, 0])
+        all_weights = []
+        with torch.no_grad():
+            for name, param in ckpt.model.named_parameters():
+                if param.numel() > 1:
+                    all_weights.append(param.detach().cpu().flatten())
+        
+        if all_weights:
+            all_weights = torch.cat(all_weights)
+            ax_weights.hist(all_weights.numpy(), bins=100, color=f"C{i}", alpha=0.7)
+            mean_w = all_weights.mean().item()
+            std_w = all_weights.std().item()
+            ax_weights.set_title(f"{labels[i]} - Weights (Mean: {mean_w:.3f}, Std: {std_w:.3f})")
+            ax_weights.set_xlabel("Weight Value")
+            ax_weights.set_ylabel("Frequency")
+            ax_weights.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
 def testing(
     model: nn.Module,
     dataset:Tuple[Tensor,Tensor],
