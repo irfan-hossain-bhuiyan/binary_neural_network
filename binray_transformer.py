@@ -1,10 +1,8 @@
 from math import log
 import copy
 import torch
-from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
@@ -41,7 +39,7 @@ class OrGateLayer(nn.Module):
         tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
         should_scale_grad: bool = False,
-        initialization:Callable[[Tensor],]=nn.init.normal,
+        initialization: Callable[..., Any] = nn.init.normal_,
     ):
         super().__init__()
         self.in_features = in_features
@@ -105,7 +103,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         should_scale_grad_per_layer: bool = False,
         only_inverter=False,
-        initialization:Callable[[Tensor],]=nn.init.normal_,
+        initialization: Callable[..., Any] = nn.init.normal_,
     ):
         super().__init__()
         self.input_dim = input_dim
