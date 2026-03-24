@@ -1,5 +1,6 @@
 from typing import Callable, Any
 from rich.console import Console
+
 import torch
 from pathlib import Path
 from dataclasses import dataclass
@@ -57,6 +58,7 @@ def load_training_checkpoint(filepath: str | Path, map_location: str | torch.dev
     return checkpoint
 
 from rich.table import Table
+from rich.console import Console
 from torch.optim import Adam
 
 def _resolve_device() -> torch.device:
@@ -253,6 +255,12 @@ def train_model(
                     formatted_peeks.append(f"{k} = {v}")
             if formatted_peeks:
                 peek_info = " | " + " | ".join(formatted_peeks)
+
+        # Call the preview function per epoch if model supports it and writer is provided via peek?
+        # A simpler way: just check if the model has a `preview` method directly.
+        
+        # It's better not to assume `writer` is globally available here, so we will pass it 
+        # using the train_model arguments, or assume the user calls preview manually outside.
 
         CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}{peek_info}")
         

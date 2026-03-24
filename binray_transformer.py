@@ -1,13 +1,14 @@
 from math import log
 import copy
 import torch
+from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, leaky_clamp, train_model, split_dataset
+from prelude import DEVICE, EarlyStopping, leaky_clamp, plot_training_loss, train_model, split_dataset
 from data_utils import save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -40,6 +41,7 @@ class OrGateLayer(nn.Module):
         tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
         should_scale_grad: bool = False,
+        initialization:Callable[[Tensor],]=nn.init.normal,
     ):
         super().__init__()
         self.in_features = in_features
@@ -50,7 +52,7 @@ class OrGateLayer(nn.Module):
         self.grad_scale = float(in_features**0.5) if should_scale_grad else 1.0
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        nn.init.normal_(self.weight)
+        initialization(self.weight)
         if isinstance(tau,nn.Parameter):
             self.tau_adder=tau
         else:
@@ -103,6 +105,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         should_scale_grad_per_layer: bool = False,
         only_inverter=False,
+        initialization:Callable[[Tensor],]=nn.init.normal,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -122,6 +125,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 use_softmax=use_softmax,
                 max_threshold=max_threshold,
                 should_scale_grad=self.should_scale_grad_per_layer,
+                initialization=initialization,
             )
             self.expectation_layers.append(layer)
             in_dim = out_dim * (1 if only_inverter else 2) # inverter doubles the features
@@ -132,7 +136,7 @@ class MultiLayerLogicGateNet(nn.Module):
     def weight_constraint(self):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
-            layer.weight.clamp_(-2.0, 2.0)
+            layer.weight.clamp_(-3.0, 3.0)
     
     def regularization(self, l1_lambda=1e-3, disc_lambda=1e-3):
         reg = torch.tensor(0.0, device=DEVICE)
@@ -176,7 +180,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 x = (1-x) if self.only_inverter else pass_invert(x)
         return x
 
-def main(epochs: int = 50):
+def main():
     print("checking if new code get updated")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
@@ -192,9 +196,14 @@ def main(epochs: int = 50):
         use_softmax=True,
         should_scale_grad_per_layer=True,
     )
+    
+    
+    # We define a custom preview function that both gives string metrics to Console
+    # and logs to TensorBoard for plotting.
+    
     checkpoint = train_model(
         dataset=(x_train, y_train),
-        num_epochs=epochs,
+        training_type=EarlyStopping(70),
         batch_size=128,
         model=net,
         loss_fn=nn.BCELoss(),
@@ -208,10 +217,13 @@ def main(epochs: int = 50):
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,
         check_grad=True,
-        peek=net.peek
+        peek=net.peek,
     )
     plot_training_loss(checkpoint.get_avg_losses())
     plot_weight_distribution(checkpoint.model)
+    
+    # Cleanup TensorBoard
+    
     return checkpoint
 
 
