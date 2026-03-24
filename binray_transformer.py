@@ -105,7 +105,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         should_scale_grad_per_layer: bool = False,
         only_inverter=False,
-        initialization:Callable[[Tensor],]=nn.init.normal,
+        initialization:Callable[[Tensor],]=nn.init.normal_,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -228,5 +228,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main(2000)
+    main()
 
