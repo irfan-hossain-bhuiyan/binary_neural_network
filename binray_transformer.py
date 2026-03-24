@@ -176,16 +176,6 @@ class MultiLayerLogicGateNet(nn.Module):
                 x = (1-x) if self.only_inverter else pass_invert(x)
         return x
 
-def plot_training_loss(loss_history: list[float]):
-    plt.figure(figsize=(6, 4))
-    plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training Loss")
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-
 def main(epochs: int = 50):
     print("checking if new code get updated")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

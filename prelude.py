@@ -33,6 +33,16 @@ class Checkpoint:
     def get_avg_losses(self) -> list[float]:
         return [entry.avg_loss for entry in self.training_history]
 
+def plot_training_loss(loss_history: list[float]):
+    plt.figure(figsize=(6, 4))
+    plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training Loss")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
 
 
 
@@ -128,9 +138,17 @@ def _loss_name(loss_fn: nn.modules.loss._Loss) -> str:
     return loss_fn.__class__.__name__
 from torch import nn
 
+from dataclasses import dataclass
+
+@dataclass
+class EarlyStopping:
+    patience: int
+    min_delta: float = 1e-4
+    max_epochs: int = 1000
+
 def train_model(
     dataset: Tuple[torch.Tensor, torch.Tensor],
-    num_epochs: int,
+    training_type: int | EarlyStopping,
     batch_size: int,
     model: torch.nn.Module,
     loss_fn: nn.modules.loss._Loss= nn.MSELoss(),
@@ -162,6 +180,18 @@ def train_model(
     x_train = x_data.to(device)
     y_train = y_data.to(device)
     train_count = x_train.shape[0]
+
+    if isinstance(training_type, int):
+        num_epochs = training_type
+        patience = None
+        min_delta = 0.0
+    else:
+        num_epochs = training_type.max_epochs
+        patience = training_type.patience
+        min_delta = training_type.min_delta
+
+    best_loss = float('inf')
+    epochs_no_improve = 0
 
     loss_history: list[float] = []
     history: list[HistoryEntry] = []
@@ -238,6 +268,17 @@ def train_model(
                 avg_grad_norms[name] = avg_val
                 # Use string formatting for the table
                 table.add_row(name, f"{avg_val:.6f}")
+
+        if patience is not None:
+            if avg_loss < best_loss - min_delta:
+                best_loss = avg_loss
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+                
+            if epochs_no_improve >= patience:
+                CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
+                break
         
         if check_grad:
             CONSOLE.print(table)
@@ -304,6 +345,52 @@ def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
 
     plt.tight_layout()
     plt.show()
+
+def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
+    """Merges two checkpoints, chaining the training history together.
+    
+    The latest model parameters, optimizer, and learning rate are inherited
+    from the second checkpoint (`ckpt2`).
+    """
+    c1 = ckpt1.train_config
+    c2 = ckpt2.train_config
+    
+    # Validation
+    if type(ckpt1.model) != type(ckpt2.model):
+        raise ValueError(f"Model architectures do not match: {type(ckpt1.model)} vs {type(ckpt2.model)}")
+    if c1.loss_fn != c2.loss_fn:
+        raise ValueError("Cannot merge checkpoints: loss functions are missing or mismatched.")
+    if c1.optimizer_cls != c2.optimizer_cls:
+        raise ValueError("Cannot merge checkpoints: optimizers are mismatched.")
+        
+    merged_history = list(ckpt1.training_history)
+    # The last recorded epoch from the first training sprint
+    last_epoch = merged_history[-1].epoch if merged_history else 0
+    
+    # Adjust epoch numbers and append the history of the second checkpoint
+    for entry in ckpt2.training_history:
+        merged_history.append(
+            HistoryEntry(
+                epoch=last_epoch + entry.epoch,
+                avg_loss=entry.avg_loss,
+                gradient_data=entry.gradient_data
+            )
+        )
+        
+    merged_config = TrainConfig(
+        num_epochs=c1.num_epochs + c2.num_epochs,
+        batch_size=c2.batch_size,            # Prefer latest run configuration
+        optimizer_cls=c2.optimizer_cls,      
+        optimizer_kwargs=c2.optimizer_kwargs, 
+        loss_fn=c1.loss_fn,
+        lr=c2.lr
+    )
+
+    return Checkpoint(
+        model=ckpt2.model,  # Take the weights trained up to the latest point
+        train_config=merged_config,
+        training_history=merged_history
+    )
 
 def plot_checkpoints(checkpoints: list[Checkpoint], title: str = "Checkpoint Comparison"):
     if not checkpoints:
