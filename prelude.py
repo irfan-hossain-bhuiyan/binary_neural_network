@@ -4,7 +4,7 @@ from rich.console import Console
 import torch
 from pathlib import Path
 from dataclasses import dataclass
-from torch import nn
+from torch import nn, tensor
 from typing import Any, Callable, Dict, List,Tuple
 import matplotlib.pyplot as plt
 
@@ -23,6 +23,8 @@ class TrainConfig:
 class HistoryEntry:
     epoch: int
     avg_loss: float
+    avg_err: float
+    avg_regularization: float
     gradient_data:Dict[str,float]
 
 @dataclass
@@ -156,6 +158,7 @@ class Trainer:
         training_type: int | EarlyStopping,
         batch_size: int,
         loss_fn: nn.modules.loss._Loss = nn.MSELoss(),
+        error_fn: nn.modules.loss._Loss = nn.L1Loss(),
         regularization_fn: Callable[[], torch.Tensor] | None = None,
         checkpoint_path: Path | None = None,
         optimizer_kwargs: Dict[str, Any] | None = None,
@@ -176,6 +179,7 @@ class Trainer:
         self.training_type = training_type
         self.batch_size = batch_size
         self.loss_fn = loss_fn
+        self.error_fn =error_fn
         self.regularization_fn = regularization_fn
         self.checkpoint_path = checkpoint_path
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {"lr": lr}
@@ -211,10 +215,9 @@ class Trainer:
             patience = self.training_type.patience
             min_delta = self.training_type.min_delta
 
-        best_loss = float('inf')
+        best_err = float('inf')
         epochs_no_improve = 0
 
-        loss_history: list[float] = []
         history: list[HistoryEntry] = []
 
         for epoch in range(1, num_epochs + 1):
@@ -223,6 +226,8 @@ class Trainer:
             Y_epoch = y_train[perm]
 
             epoch_loss = 0.0
+            epoch_error = 0.0
+            epoch_regularization = 0.0
             num_batches = 0
             batch_grad_norms: dict[str, float] = {}
             
@@ -233,10 +238,9 @@ class Trainer:
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(xb)
 
-                reg_loss = 0.0
+                reg_loss = tensor(0.0)
                 if self.regularization_fn is not None:
                     reg_loss = self.regularization_fn()
-
                 loss = self.loss_fn(logits, yb) + reg_loss
                 loss.backward()
                 
@@ -247,18 +251,21 @@ class Trainer:
                             batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
 
                 optimizer.step()
-                if self.constraint is not None:
-                    with torch.no_grad():
+                if scheduler is not None:
+                    scheduler.step()
+
+                with torch.no_grad():
+                    epoch_error+=self.error_fn(logits,yb).item()
+                    if self.constraint is not None:
                         self.constraint()
 
                 epoch_loss += loss.item()
+                epoch_regularization+=reg_loss.item()
                 num_batches += 1
 
-            if scheduler is not None:
-                scheduler.step()
-
             avg_loss = epoch_loss / num_batches
-            loss_history.append(avg_loss)
+            avg_error = epoch_error/num_batches
+            avg_regularization = epoch_regularization/num_batches
             
             peek_info = ""
             if self.peek is not None:
@@ -272,7 +279,7 @@ class Trainer:
                 if formatted_peeks:
                     peek_info = " | " + " | ".join(formatted_peeks)
 
-            CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}{peek_info}")
+            CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | error = {avg_error:.6f} | regularization = {avg_regularization:.6f} {peek_info}")
             
             avg_grad_norms = {}
             if self.check_grad:
@@ -288,8 +295,8 @@ class Trainer:
                 CONSOLE.print(table)
 
             if patience is not None:
-                if avg_loss < best_loss - min_delta:
-                    best_loss = avg_loss
+                if avg_error < best_err - min_delta:
+                    best_err = avg_error
                     epochs_no_improve = 0
                 else:
                     epochs_no_improve += 1
@@ -298,7 +305,7 @@ class Trainer:
                     CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
                     break
 
-            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss, gradient_data=avg_grad_norms))
+            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss,avg_regularization=avg_regularization,avg_err=avg_error ,gradient_data=avg_grad_norms))
 
         checkpoint = Checkpoint(
             model=self.model,

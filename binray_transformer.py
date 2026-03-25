@@ -217,10 +217,10 @@ def main():
         check_grad=True,
         peek=net.peek,
     )
-    #checkpoint = trainer.train()
-    trainer.export_for_burn(Path("artifacts/burn_export"))
-    #plot_training_loss(checkpoint.get_avg_losses())
-    #plot_weight_distribution(checkpoint.model)
+    checkpoint = trainer.train()
+    #trainer.export_for_burn(Path("artifacts/burn_export"))
+    plot_training_loss(checkpoint.get_avg_losses())
+    plot_weight_distribution(checkpoint.model)
     
     # Cleanup TensorBoard
     return None
