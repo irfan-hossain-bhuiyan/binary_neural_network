@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, EarlyStopping, leaky_clamp, plot_training_loss, train_model, split_dataset
+from prelude import DEVICE, EarlyStopping, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -199,12 +199,12 @@ def main():
     # We define a custom preview function that both gives string metrics to Console
     # and logs to TensorBoard for plotting.
     
-    checkpoint = train_model(
+    trainer = Trainer(
         dataset=(x_train, y_train),
         training_type=EarlyStopping(70),
         batch_size=128,
         model=net,
-        loss_fn=nn.BCELoss(),
+        loss_fn=nn.L1Loss(),
         lr=0.1,
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.5,0.5)},
@@ -217,12 +217,13 @@ def main():
         check_grad=True,
         peek=net.peek,
     )
-    plot_training_loss(checkpoint.get_avg_losses())
-    plot_weight_distribution(checkpoint.model)
+    #checkpoint = trainer.train()
+    trainer.export_for_burn(Path("artifacts/burn_export"))
+    #plot_training_loss(checkpoint.get_avg_losses())
+    #plot_weight_distribution(checkpoint.model)
     
     # Cleanup TensorBoard
-    
-    return checkpoint
+    return None
 
 
 if __name__ == "__main__":

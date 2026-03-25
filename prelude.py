@@ -73,7 +73,7 @@ class LeakyClamp(torch.autograd.Function):
         ctx.min_val = min_val
         ctx.max_val = max_val
         ctx.leak = leak
-        return torch.clamp(input, min_val, max_val)
+        return torch.clamp(input, min=float(min_val), max=float(max_val))
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -148,174 +148,238 @@ class EarlyStopping:
     min_delta: float = 1e-4
     max_epochs: int = 1000
 
-def train_model(
-    dataset: Tuple[torch.Tensor, torch.Tensor],
-    training_type: int | EarlyStopping,
-    batch_size: int,
-    model: torch.nn.Module,
-    loss_fn: nn.modules.loss._Loss= nn.MSELoss(),
-    regularization_fn: Callable[[], torch.Tensor] | None = None,
-    checkpoint_path: Path | None = None,
-    optimizer_kwargs: Dict[str, Any] | None = None,
-    optimizer_cls: type[torch.optim.Optimizer] = Adam,
-    lr: float = 0.1,
-    lr_schedular: Callable[..., torch.optim.lr_scheduler.LRScheduler] | Any | None = None,
-    constraint: None | Callable = None,
-    lr_schedular_kargs: Dict[str, Any] = {},
-    device=DEVICE,
-    check_grad: bool = False,
-    peek: Callable[[], Dict[str, Any]] | None = None
-):
-    model = model.to(device)
-
-    if optimizer_kwargs is None:
-        optimizer_kwargs = {"lr": lr}
-       
-    optimizer = optimizer_cls(model.parameters(), **optimizer_kwargs)
-
-    if lr_schedular is not None:
-        scheduler = lr_schedular(optimizer, **lr_schedular_kargs)
-    else:
-        scheduler = None
-        
-    x_data, y_data = dataset
-    x_train = x_data.to(device)
-    y_train = y_data.to(device)
-    train_count = x_train.shape[0]
-
-    if isinstance(training_type, int):
-        num_epochs = training_type
-        patience = None
-        min_delta = 0.0
-    else:
-        num_epochs = training_type.max_epochs
-        patience = training_type.patience
-        min_delta = training_type.min_delta
-
-    best_loss = float('inf')
-    epochs_no_improve = 0
-
-    loss_history: list[float] = []
-    history: list[HistoryEntry] = []
-
-    for epoch in range(1, num_epochs + 1):
-        perm = torch.randperm(train_count, device=device)
-        X_epoch = x_train[perm]
-        Y_epoch = y_train[perm]
-
-        epoch_loss = 0.0
-        num_batches = 0
-
-        batch_grad_norms: dict[str, float] = {}
-        
-        for i in range(0, train_count, batch_size):
-            xb = X_epoch[i : i + batch_size]
-            yb = Y_epoch[i : i + batch_size]
-
-            optimizer.zero_grad(set_to_none=True)
-            logits = model(xb)
-
-            reg_loss = 0.0
-            if regularization_fn is not None:
-                reg_loss = regularization_fn()
-
-            loss = loss_fn(logits, yb) + reg_loss
-            loss.backward()
+class Trainer:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        dataset: Tuple[torch.Tensor, torch.Tensor],
+        training_type: int | EarlyStopping,
+        batch_size: int,
+        loss_fn: nn.modules.loss._Loss = nn.MSELoss(),
+        regularization_fn: Callable[[], torch.Tensor] | None = None,
+        checkpoint_path: Path | None = None,
+        optimizer_kwargs: Dict[str, Any] | None = None,
+        optimizer_cls: type[torch.optim.Optimizer] = Adam,
+        lr: float = 0.1,
+        lr_schedular: Callable[..., torch.optim.lr_scheduler.LRScheduler] | Any | None = None,
+        constraint: None | Callable = None,
+        lr_schedular_kargs: Dict[str, Any] = None,
+        device=DEVICE,
+        check_grad: bool = False,
+        peek: Callable[[], Dict[str, Any]] | None = None
+    ):
+        if lr_schedular_kargs is None:
+            lr_schedular_kargs = {}
             
-            if check_grad:
-                # Calculate gradient norms for the batches
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        # Use mean absolute gradient instead of sum-based norm to check gradient health independently of layer size
-                        norm = param.grad.detach().abs().mean().item()
-                        batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
+        self.model = model
+        self.dataset = dataset
+        self.training_type = training_type
+        self.batch_size = batch_size
+        self.loss_fn = loss_fn
+        self.regularization_fn = regularization_fn
+        self.checkpoint_path = checkpoint_path
+        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {"lr": lr}
+        self.optimizer_cls = optimizer_cls
+        self.lr = lr
+        self.lr_schedular = lr_schedular
+        self.constraint = constraint
+        self.lr_schedular_kargs = lr_schedular_kargs
+        self.device = device
+        self.check_grad = check_grad
+        self.peek = peek
 
-            optimizer.step()
-            if constraint is not None:
-                with torch.no_grad():
-                    constraint()
+    def train(self) -> Checkpoint:
+        self.model = self.model.to(self.device)
+        optimizer = self.optimizer_cls(self.model.parameters(), **self.optimizer_kwargs)
 
-            epoch_loss += loss.item()
-            num_batches += 1
-
-        if scheduler is not None:
-            scheduler.step()
-
-        avg_loss = epoch_loss / num_batches
-        loss_history.append(avg_loss)
-        
-        peek_info = ""
-        if peek is not None:
-            peek_results = peek()
-            formatted_peeks = []
-            for k, v in peek_results.items():
-                if isinstance(v, float):
-                    formatted_peeks.append(f"{k} = {v:.6f}")
-                else:
-                    formatted_peeks.append(f"{k} = {v}")
-            if formatted_peeks:
-                peek_info = " | " + " | ".join(formatted_peeks)
-
-        # Call the preview function per epoch if model supports it and writer is provided via peek?
-        # A simpler way: just check if the model has a `preview` method directly.
-        
-        # It's better not to assume `writer` is globally available here, so we will pass it 
-        # using the train_model arguments, or assume the user calls preview manually outside.
-
-        CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}{peek_info}")
-        
-        avg_grad_norms = {}
-        if check_grad:
-            from rich.table import Table
-            table = Table(title="Gradient Norms")
-            table.add_column("Parameter", justify="left", style="cyan", no_wrap=True)
-            table.add_column("Avg Grad Norm", justify="right", style="magenta")
+        if self.lr_schedular is not None:
+            scheduler = self.lr_schedular(optimizer, **self.lr_schedular_kargs)
+        else:
+            scheduler = None
             
-            for name, val in batch_grad_norms.items():
-                avg_val = val / num_batches
-                avg_grad_norms[name] = avg_val
-                # Use string formatting for the table
-                table.add_row(name, f"{avg_val:.6f}")
+        x_data, y_data = self.dataset
+        x_train = x_data.to(self.device)
+        y_train = y_data.to(self.device)
+        train_count = x_train.shape[0]
 
-        if patience is not None:
-            if avg_loss < best_loss - min_delta:
-                best_loss = avg_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
+        if isinstance(self.training_type, int):
+            num_epochs = self.training_type
+            patience = None
+            min_delta = 0.0
+        else:
+            num_epochs = self.training_type.max_epochs
+            patience = self.training_type.patience
+            min_delta = self.training_type.min_delta
+
+        best_loss = float('inf')
+        epochs_no_improve = 0
+
+        loss_history: list[float] = []
+        history: list[HistoryEntry] = []
+
+        for epoch in range(1, num_epochs + 1):
+            perm = torch.randperm(train_count, device=self.device)
+            X_epoch = x_train[perm]
+            Y_epoch = y_train[perm]
+
+            epoch_loss = 0.0
+            num_batches = 0
+            batch_grad_norms: dict[str, float] = {}
+            
+            for i in range(0, train_count, self.batch_size):
+                xb = X_epoch[i : i + self.batch_size]
+                yb = Y_epoch[i : i + self.batch_size]
+
+                optimizer.zero_grad(set_to_none=True)
+                logits = self.model(xb)
+
+                reg_loss = 0.0
+                if self.regularization_fn is not None:
+                    reg_loss = self.regularization_fn()
+
+                loss = self.loss_fn(logits, yb) + reg_loss
+                loss.backward()
                 
-            if epochs_no_improve >= patience:
-                CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
-                break
-        
-        if check_grad:
-            CONSOLE.print(table)
+                if self.check_grad:
+                    for name, param in self.model.named_parameters():
+                        if param.grad is not None:
+                            norm = param.grad.detach().abs().mean().item()
+                            batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
 
-        history.append(
-            HistoryEntry(
-                epoch=epoch,
-                avg_loss=avg_loss,
-                gradient_data=avg_grad_norms
-            )
+                optimizer.step()
+                if self.constraint is not None:
+                    with torch.no_grad():
+                        self.constraint()
+
+                epoch_loss += loss.item()
+                num_batches += 1
+
+            if scheduler is not None:
+                scheduler.step()
+
+            avg_loss = epoch_loss / num_batches
+            loss_history.append(avg_loss)
+            
+            peek_info = ""
+            if self.peek is not None:
+                peek_results = self.peek()
+                formatted_peeks = []
+                for k, v in peek_results.items():
+                    if isinstance(v, float):
+                        formatted_peeks.append(f"{k} = {v:.6f}")
+                    else:
+                        formatted_peeks.append(f"{k} = {v}")
+                if formatted_peeks:
+                    peek_info = " | " + " | ".join(formatted_peeks)
+
+            CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f}{peek_info}")
+            
+            avg_grad_norms = {}
+            if self.check_grad:
+                from rich.table import Table
+                table = Table(title="Gradient Norms")
+                table.add_column("Parameter", justify="left", style="cyan", no_wrap=True)
+                table.add_column("Avg Grad Norm", justify="right", style="magenta")
+                
+                for name, val in batch_grad_norms.items():
+                    avg_val = val / num_batches
+                    avg_grad_norms[name] = avg_val
+                    table.add_row(name, f"{avg_val:.6f}")
+                CONSOLE.print(table)
+
+            if patience is not None:
+                if avg_loss < best_loss - min_delta:
+                    best_loss = avg_loss
+                    epochs_no_improve = 0
+                else:
+                    epochs_no_improve += 1
+                    
+                if epochs_no_improve >= patience:
+                    CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
+                    break
+
+            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss, gradient_data=avg_grad_norms))
+
+        checkpoint = Checkpoint(
+            model=self.model,
+            train_config=TrainConfig(
+                num_epochs=num_epochs,
+                batch_size=self.batch_size,
+                optimizer_cls=self.optimizer_cls.__name__,
+                optimizer_kwargs=self.optimizer_kwargs,
+                loss_fn=self.loss_fn.__class__.__name__,
+                lr=self.lr,
+            ),
+            training_history=history,
         )
 
-    checkpoint = Checkpoint(
-        model=model,
-        train_config=TrainConfig(
-            num_epochs=num_epochs,
-            batch_size=batch_size,
-            optimizer_cls=optimizer_cls.__name__,
-            optimizer_kwargs=optimizer_kwargs,
-            loss_fn=loss_fn.__class__.__name__,
-            lr=lr,
-        ),
-        training_history=history,
-    )
+        if self.checkpoint_path is not None:
+            save_training_checkpoint(checkpoint, self.checkpoint_path)
 
-    if checkpoint_path is not None:
-        save_training_checkpoint(checkpoint, checkpoint_path)
+        return checkpoint
 
-    return checkpoint
+    def export_for_burn(self, export_dir: str | Path):
+        """
+        Exports the model to ONNX and the training dataset to a format consumable by a Rust burn.rs program.
+        We'll save the ONNX file and use `.safetensors` or standard numpy `.npz` for the dataset.
+        """
+        import numpy as np
+        
+        export_dir = Path(export_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Export model to ONNX
+        dummy_x, _ = self.dataset
+        # Create a tiny dummy input matching the shape of one dataset entry, or batch
+        dummy_input = dummy_x[:0].unsqueeze(0) if dummy_x.dim() == 1 else dummy_x[:1]
+        
+        onnx_path = export_dir / "model.onnx"
+        self.model.eval()
+        torch.onnx.export(
+            self.model.cpu(), 
+            dummy_input.cpu(), 
+            str(onnx_path), 
+            export_params=True,
+            do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output'],
+            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}}
+        )
+        CONSOLE.print(f"Exported ONNX model to {onnx_path}")
+        
+        # 2. Export dataset
+        x_data, y_data = self.dataset
+        dataset_path = export_dir / "dataset.npz"
+        np.savez(
+            dataset_path, 
+            x=x_data.cpu().numpy(), 
+            y=y_data.cpu().numpy()
+        )
+        CONSOLE.print(f"Exported dataset to {dataset_path}")
+        
+        # 3. Export train config
+        import json
+        config_path = export_dir / "train_config.json"
+        
+        if isinstance(self.training_type, int):
+            num_epochs = self.training_type
+            patience = None
+        else:
+            num_epochs = self.training_type.max_epochs
+            patience = self.training_type.patience
+            
+        config = {
+            "num_epochs": num_epochs,
+            "batch_size": self.batch_size,
+            "lr": self.lr,
+            "loss_fn": self.loss_fn.__class__.__name__,
+            "optimizer": self.optimizer_cls.__name__,
+            "patience": patience
+        }
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=4)
+        CONSOLE.print(f"Exported training metadata to {config_path}")
+
 
 def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
     params_to_plot = {}
