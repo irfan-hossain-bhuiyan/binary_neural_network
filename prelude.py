@@ -452,6 +452,7 @@ def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
             HistoryEntry(
                 epoch=last_epoch + entry.epoch,
                 avg_loss=entry.avg_loss,
+                
                 gradient_data=entry.gradient_data
             )
         )

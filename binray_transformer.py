@@ -64,7 +64,7 @@ class OrGateLayer(nn.Module):
         if not (0.0 <= threshold <= 1.0):
             raise ValueError(f"threshold must be in [0, 1], got {threshold}")
         with torch.no_grad():
-            discrete_w = (self.actual_weight() >= threshold).float()
+            discrete_w = (self.weight >= threshold).float()
             self.weight.copy_(discrete_w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -79,7 +79,8 @@ class OrGateLayer(nn.Module):
             s = z.max(dim=-1).values
 
         return s
-
+    def to_hardmax(self):
+        self.use_softmax=False
 
 class MultiLayerLogicGateNet(nn.Module):
     """Expectation-based multi-layer gate network with configurable depth and tau sharing."""
@@ -89,7 +90,7 @@ class MultiLayerLogicGateNet(nn.Module):
         input_dim: int = 64,
         layer_dims: list[int] | tuple[int, ...] = (256, 128, 64, 32),
         init_tau_param:nn.Parameter |float = 0.0,
-        max_threshold:float =0.9,
+        max_threshold:float =0.95,
         # Parameter is the tau is shared.
         # float if all of them are isolated
         # None for default prefered value
@@ -135,6 +136,10 @@ class MultiLayerLogicGateNet(nn.Module):
             disc_error = (0.5-(w-0.5).abs()).relu().mean()
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error)
         return reg
+    def set_use_softmax(self,value:bool):
+        for layer in self.expectation_layers:
+            layer = cast(OrGateLayer,layer)
+            layer.use_softmax=value
 
     def peek(self) -> dict[str, Any]:
         result = {}
@@ -196,7 +201,7 @@ def main():
         batch_size=128,
         model=net,
         loss_fn=nn.L1Loss(),
-        lr=0.1,
+        lr=0.25,
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.5,0.5)},
         regularization_fn=net.regularization,
