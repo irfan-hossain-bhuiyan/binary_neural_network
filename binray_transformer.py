@@ -38,16 +38,13 @@ class OrGateLayer(nn.Module):
         max_threshold: float = 0.9,
         tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
-        should_scale_grad: bool = False,
         initialization: Callable[..., Any] = nn.init.normal_,
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.use_softmax = use_softmax
-        self.should_scale_grad = should_scale_grad
         # Compute gradient scale based on square root of the input dimension
-        self.grad_scale = float(in_features**0.5) if should_scale_grad else 1.0
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         initialization(self.weight)
@@ -81,10 +78,6 @@ class OrGateLayer(nn.Module):
         else:
             s = z.max(dim=-1).values
 
-        if self.should_scale_grad:
-            if s.requires_grad:
-                s.register_hook(lambda grad: grad * self.grad_scale)
-
         return s
 
 
@@ -101,7 +94,6 @@ class MultiLayerLogicGateNet(nn.Module):
         # float if all of them are isolated
         # None for default prefered value
         use_softmax: bool = False,
-        should_scale_grad_per_layer: bool = False,
         only_inverter=False,
         initialization: Callable[..., Any] = nn.init.normal_,
     ):
@@ -110,7 +102,6 @@ class MultiLayerLogicGateNet(nn.Module):
         self.layer_dims = list(layer_dims)
         self.use_softmax = use_softmax
         self.is_shared_tau = isinstance(init_tau_param,nn.Parameter)
-        self.should_scale_grad_per_layer = should_scale_grad_per_layer
         self.only_inverter=only_inverter
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
 
@@ -122,7 +113,6 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau=init_tau_param,
                 use_softmax=use_softmax,
                 max_threshold=max_threshold,
-                should_scale_grad=self.should_scale_grad_per_layer,
                 initialization=initialization,
             )
             self.expectation_layers.append(layer)
@@ -176,6 +166,8 @@ class MultiLayerLogicGateNet(nn.Module):
             x = layer(x)
             if idx < len(self.expectation_layers) - 1:
                 x = (1-x) if self.only_inverter else pass_invert(x)
+            else:
+                x = (1-x)
         return x
 
 def main():
@@ -192,7 +184,6 @@ def main():
         input_dim=64,
         layer_dims=(256, 128, 64, 32),
         use_softmax=True,
-        should_scale_grad_per_layer=True,
     )
     
     
