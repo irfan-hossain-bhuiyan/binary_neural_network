@@ -127,14 +127,16 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-3.0, 3.0)
     
-    def regularization(self, l1_lambda=1e-3, disc_lambda=1e-3):
+    def regularization(self, l1_lambda=1e-3, disc_lambda=1e-3, tau_lambda=1e-3):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
             w = layer.weight
             l1_error = w.relu().mean()
             disc_error = (0.5-(w-0.5).abs()).relu().mean()
-            reg += (l1_lambda * l1_error) + (disc_lambda * disc_error)
+            tau_err = torch.exp(-layer.tau)
+            reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
+            # Encourage tau to grow larger (L1 regularization, negative sign)
         return reg
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
