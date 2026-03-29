@@ -56,6 +56,9 @@ class OrGateLayer(nn.Module):
     @property
     def tau(self) -> torch.Tensor:
         return self.tau_floor + F.leaky_relu(self.tau_adder,negative_slope=0.05)
+    
+    def tau_costraint(self,max_value):
+        self.tau_adder.clamp_max_(max_value)
 
     def actual_weight(self) -> torch.Tensor:
         return cast(torch.Tensor, leaky_clamp(self.weight, 0, 1, 0.1))
@@ -122,10 +125,11 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def weight_constraint(self):
+    def constraint(self):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-3.0, 3.0)
+            layer.tau_costraint(10)
     
     def regularization(self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
@@ -208,7 +212,7 @@ def main():
         regularization_fn=net.regularization,
         lr_schedular=None, #CosineAnnealingWarmRestarts,
         lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-3},
-        constraint=net.weight_constraint,
+        constraint=net.constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,
         check_grad=True,
