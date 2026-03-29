@@ -163,16 +163,15 @@ class Trainer:
         checkpoint_path: Path | None = None,
         optimizer_kwargs: Dict[str, Any] | None = None,
         optimizer_cls: type[torch.optim.Optimizer] = Adam,
-        lr: float = 0.1,
         lr_schedular: Callable[..., torch.optim.lr_scheduler.LRScheduler] | Any | None = None,
         constraint: None | Callable = None,
-        lr_schedular_kargs: Dict[str, Any] = None,
+        lr_schedular_kargs: Dict[str, Any]|None = None,
         device=DEVICE,
         check_grad: bool = False,
         peek: Callable[[], Dict[str, Any]] | None = None
     ):
-        if lr_schedular_kargs is None:
-            lr_schedular_kargs = {}
+        
+        lr_schedular_kargs = {} if lr_schedular_kargs is None else lr_schedular_kargs
             
         self.model = model
         self.dataset = dataset
@@ -182,9 +181,10 @@ class Trainer:
         self.error_fn =error_fn
         self.regularization_fn = regularization_fn
         self.checkpoint_path = checkpoint_path
-        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {"lr": lr}
+
+        # Ensure 'lr' is present in optimizer_kwargs, else add it
+        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
         self.optimizer_cls = optimizer_cls
-        self.lr = lr
         self.lr_schedular = lr_schedular
         self.constraint = constraint
         self.lr_schedular_kargs = lr_schedular_kargs

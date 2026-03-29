@@ -95,7 +95,7 @@ class MultiLayerLogicGateNet(nn.Module):
         # float if all of them are isolated
         # None for default prefered value
         use_softmax: bool = False,
-        only_inverter=False,
+        only_inverter=True,
         initialization: Callable[..., Any] = nn.init.normal_,
     ):
         super().__init__()
@@ -127,7 +127,7 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-3.0, 3.0)
     
-    def regularization(self, l1_lambda=1e-3, disc_lambda=1e-3, tau_lambda=1e-3):
+    def regularization(self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
@@ -203,9 +203,8 @@ def main():
         batch_size=128,
         model=net,
         loss_fn=nn.L1Loss(),
-        lr=0.25,
         optimizer_cls= Adam,
-        optimizer_kwargs= {"betas":(0.5,0.5)},
+        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.1},
         regularization_fn=net.regularization,
         lr_schedular=None, #CosineAnnealingWarmRestarts,
         lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-3},
