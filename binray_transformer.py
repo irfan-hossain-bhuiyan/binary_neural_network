@@ -200,18 +200,24 @@ def main():
     
     # We define a custom preview function that both gives string metrics to Console
     # and logs to TensorBoard for plotting.
-    
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
-        training_type=EarlyStopping(70),
+        training_type=EarlyStopping(30,max_epochs=100),
         batch_size=128,
         model=net,
-        loss_fn=nn.L1Loss(),
+        loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls= Adam,
-        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.1},
-        regularization_fn=net.regularization,
-        lr_schedular=None, #CosineAnnealingWarmRestarts,
-        lr_schedular_kargs={"T_0": 200,"T_mult":1,"eta_min":1e-3},
+        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.01},
+        regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
+        lr_schedular=ReduceLROnPlateau,
+        lr_schedular_kargs={
+            "mode": "min",
+            "factor": 0.5,
+            "patience": 15,
+            "threshold": 1e-3,
+            "min_lr": 1e-3,
+        },
         constraint=net.constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,

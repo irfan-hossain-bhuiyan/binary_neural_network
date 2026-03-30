@@ -17,7 +17,6 @@ class TrainConfig:
     optimizer_cls: str
     optimizer_kwargs: dict[str, Any]
     loss_fn: str
-    lr: float
 
 @dataclass
 class HistoryEntry:
@@ -46,6 +45,16 @@ def plot_training_loss(loss_history: list[float]):
     plt.tight_layout()
     plt.show()
 
+import inspect
+
+def call_with_matching_args(func, arg_dict):
+    """
+    Calls `func` with only those arguments from `arg_dict` that match the function's signature.
+    """
+    sig = inspect.signature(func)
+    valid_keys = set(sig.parameters.keys())
+    filtered_args = {k: v for k, v in arg_dict.items() if k in valid_keys}
+    return func(**filtered_args)
 
 
 
@@ -147,8 +156,8 @@ from dataclasses import dataclass
 @dataclass
 class EarlyStopping:
     patience: int
-    min_delta: float = 1e-4
-    max_epochs: int = 1000
+    min_delta: float = 1e-3
+    max_epochs: int = 500
 
 class Trainer:
     def __init__(
@@ -251,8 +260,6 @@ class Trainer:
                             batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
 
                 optimizer.step()
-                if scheduler is not None:
-                    scheduler.step()
 
                 with torch.no_grad():
                     epoch_error+=self.error_fn(logits,yb).item()
@@ -266,6 +273,9 @@ class Trainer:
             avg_loss = epoch_loss / num_batches
             avg_error = epoch_error/num_batches
             avg_regularization = epoch_regularization/num_batches
+            if scheduler is not None:
+                # Use call_with_matching_args to flexibly call scheduler.step with available metrics
+                call_with_matching_args(scheduler.step, {'metrics': avg_error, 'loss': avg_error, 'avg_error': avg_error})
             
             peek_info = ""
             if self.peek is not None:
@@ -315,7 +325,6 @@ class Trainer:
                 optimizer_cls=self.optimizer_cls.__name__,
                 optimizer_kwargs=self.optimizer_kwargs,
                 loss_fn=self.loss_fn.__class__.__name__,
-                lr=self.lr,
             ),
             training_history=history,
         )
@@ -378,7 +387,6 @@ class Trainer:
         config = {
             "num_epochs": num_epochs,
             "batch_size": self.batch_size,
-            "lr": self.lr,
             "loss_fn": self.loss_fn.__class__.__name__,
             "optimizer": self.optimizer_cls.__name__,
             "patience": patience
@@ -452,7 +460,8 @@ def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
             HistoryEntry(
                 epoch=last_epoch + entry.epoch,
                 avg_loss=entry.avg_loss,
-                
+                avg_err=entry.avg_err,
+                avg_regularization=entry.avg_regularization,
                 gradient_data=entry.gradient_data
             )
         )
@@ -485,9 +494,8 @@ def plot_checkpoints(checkpoints: list[Checkpoint], title: str = "Checkpoint Com
         losses = ckpt.get_avg_losses()
         c = ckpt.train_config
         opt = c.optimizer_cls
-        lr = c.lr
         loss_fn = c.loss_fn
-        label = f"Ckpt {i+1} (LR={lr}, Opt={opt}, Loss={loss_fn})"
+        label = f"Ckpt {i+1} (Opt={opt}, Loss={loss_fn})"
         loss_data.append(losses)
         labels.append(label)
 
