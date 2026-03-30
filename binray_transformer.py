@@ -129,7 +129,7 @@ class MultiLayerLogicGateNet(nn.Module):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-3.0, 3.0)
-            layer.tau_costraint(10)
+            layer.tau_costraint(20)
     
     def regularization(self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
