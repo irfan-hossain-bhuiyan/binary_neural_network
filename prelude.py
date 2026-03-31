@@ -4,6 +4,38 @@ from rich.console import Console
 import torch
 from pathlib import Path
 from dataclasses import dataclass
+
+from typing import Callable
+
+def early_stopping(patience: int, min_delta: float = 1e-3, max_epochs: int = 500) -> Callable[[dict], bool]:
+    """
+    Returns a callback function for early stopping based on patience, min_delta, and max_epochs.
+    The returned function takes a metrics dict and returns True to stop training.
+    """
+    best_err = {'val': float('inf')}
+    epochs_no_improve = {'val': 0}
+    def callback(metrics: dict) -> bool:
+        epoch = metrics['epoch']
+        avg_error = metrics['avg_error']
+        if avg_error < best_err['val'] - min_delta:
+            best_err['val'] = avg_error
+            epochs_no_improve['val'] = 0
+        else:
+            epochs_no_improve['val'] += 1
+        if epochs_no_improve['val'] >= patience:
+            return True
+        if epoch >= max_epochs:
+            return True
+        return False
+    return callback
+
+def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
+    """
+    Returns a callback function that stops after max_epochs.
+    """
+    def callback(metrics: dict) -> bool:
+        return metrics['epoch'] >= max_epochs
+    return callback
 from torch import nn, tensor
 from typing import Any, Callable, Dict, Tuple
 import matplotlib.pyplot as plt
@@ -154,17 +186,12 @@ from torch import nn
 from dataclasses import dataclass
 
 @dataclass
-class EarlyStopping:
-    patience: int
-    min_delta: float = 1e-3
-    max_epochs: int = 500
-
 class Trainer:
     def __init__(
         self,
         model: torch.nn.Module,
         dataset: Tuple[torch.Tensor, torch.Tensor],
-        training_type: int | EarlyStopping,
+        stop_on: Callable[[dict], bool],  # Receives metrics dict, returns True to stop
         batch_size: int,
         loss_fn: nn.modules.loss._Loss = nn.MSELoss(),
         error_fn: nn.modules.loss._Loss = nn.L1Loss(),
@@ -184,7 +211,7 @@ class Trainer:
             
         self.model = model
         self.dataset = dataset
-        self.training_type = training_type
+        self.stop_on = stop_on
         self.batch_size = batch_size
         self.loss_fn = loss_fn
         self.error_fn =error_fn
@@ -215,30 +242,23 @@ class Trainer:
         y_train = y_data.to(self.device)
         train_count = x_train.shape[0]
 
-        if isinstance(self.training_type, int):
-            num_epochs = self.training_type
-            patience = None
-            min_delta = 0.0
-        else:
-            num_epochs = self.training_type.max_epochs
-            patience = self.training_type.patience
-            min_delta = self.training_type.min_delta
-
+        # Remove EarlyStopping/int logic; rely on stop_on function
         best_err = float('inf')
         epochs_no_improve = 0
 
         history: list[HistoryEntry] = []
-
-        for epoch in range(1, num_epochs + 1):
+        
+        epoch = 0
+        while True:
+            epoch += 1
             perm = torch.randperm(train_count, device=self.device)
             X_epoch = x_train[perm]
             Y_epoch = y_train[perm]
-
             epoch_loss = 0.0
             epoch_error = 0.0
             epoch_regularization = 0.0
             num_batches = 0
-            batch_grad_norms: dict[str, float] = {}
+            batch_grads: dict[str, Tensor] = {}
             
             for i in range(0, train_count, self.batch_size):
                 xb = X_epoch[i : i + self.batch_size]
@@ -253,11 +273,10 @@ class Trainer:
                 loss = self.loss_fn(logits, yb) + reg_loss
                 loss.backward()
                 
-                if self.check_grad:
-                    for name, param in self.model.named_parameters():
-                        if param.grad is not None:
-                            norm = param.grad.detach().abs().mean().item()
-                            batch_grad_norms[name] = batch_grad_norms.get(name, 0.0) + norm
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None:
+                        batch_grad = param.grad.mean(dim=0).abs().detach()
+                        batch_grads[name] = batch_grads.get(name, 0.0) + batch_grad
 
                 optimizer.step()
 
@@ -269,6 +288,9 @@ class Trainer:
                 epoch_loss += loss.item()
                 epoch_regularization+=reg_loss.item()
                 num_batches += 1
+                grad_data={}
+            for name, param in self.model.named_parameters():
+                grad_data[name]=batch_grads[name]/num_batches
 
             avg_loss = epoch_loss / num_batches
             avg_error = epoch_error/num_batches
@@ -291,7 +313,6 @@ class Trainer:
 
             CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | error = {avg_error:.6f} | regularization = {avg_regularization:.6f} {peek_info}")
             
-            grad_data = {}
             if self.check_grad:
                 from rich.table import Table
                 table = Table(title="Gradient Norms")
@@ -301,27 +322,28 @@ class Trainer:
                 for name, param in self.model.named_parameters():
                     if param.grad is not None:
                         # Save the entire gradient tensor (detached, moved to cpu)
-                        grad_data[name] = param.grad.detach().cpu().clone()
-                        avg_val = grad_data[name].abs().mean().item()
+                        avg_val = grad_data[name].mean().item()
                         table.add_row(name, f"{avg_val:.6f}")
                 CONSOLE.print(table)
-            if patience is not None:
-                if avg_error < best_err - min_delta:
-                    best_err = avg_error
-                    epochs_no_improve = 0
-                else:
-                    epochs_no_improve += 1
-                    
-                if epochs_no_improve >= patience:
-                    CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
-                    break
+            # Call stop_on function with metrics; break if it returns True
+            stop_metrics = {
+                'epoch': epoch,
+                'avg_loss': avg_loss,
+                'avg_error': avg_error,
+                'avg_regularization': avg_regularization,
+                'history': history,
+                'model': self.model,
+            }
+            if self.stop_on(stop_metrics):
+                CONSOLE.print(f"[bold red]Stopping triggered by stop_on function at epoch {epoch}![/bold red]")
+                break
 
             history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss, avg_regularization=avg_regularization, avg_err=avg_error, gradient_data=grad_data))
 
         checkpoint = Checkpoint(
             model=self.model,
             train_config=TrainConfig(
-                num_epochs=num_epochs,
+                num_epochs=epoch,
                 batch_size=self.batch_size,
                 optimizer_cls=self.optimizer_cls.__name__,
                 optimizer_kwargs=self.optimizer_kwargs,

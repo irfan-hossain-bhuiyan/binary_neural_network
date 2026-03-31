@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, EarlyStopping, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, early_stopping, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -197,7 +197,7 @@ def train_mnist():
     from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
-        training_type=EarlyStopping(30, max_epochs=100),
+        stop_on=early_stopping(30, max_epochs=100),
         batch_size=128,
         model=net,
         loss_fn=nn.HuberLoss(delta=0.5),
@@ -244,12 +244,12 @@ def train_xor():
     from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
-        training_type=EarlyStopping(30,max_epochs=100),
+        stop_on=early_stopping(10, max_epochs=60),
         batch_size=128,
         model=net,
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls= Adam,
-        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.01},
+        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.1},
         regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
         lr_schedular=ReduceLROnPlateau,
         lr_schedular_kargs={
@@ -276,7 +276,7 @@ def train_xor():
 
 
 def main():
-    train_mnist()
+    train_xor()
 if __name__ == "__main__":
     main()
 
