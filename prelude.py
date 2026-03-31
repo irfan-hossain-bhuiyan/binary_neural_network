@@ -5,7 +5,7 @@ import torch
 from pathlib import Path
 from dataclasses import dataclass
 from torch import nn, tensor
-from typing import Any, Callable, Dict, List,Tuple
+from typing import Any, Callable, Dict, Tuple
 import matplotlib.pyplot as plt
 
 from torch._prims_common import Tensor
@@ -24,7 +24,7 @@ class HistoryEntry:
     avg_loss: float
     avg_err: float
     avg_regularization: float
-    gradient_data:Dict[str,float]
+    gradient_data:Dict[str, Tensor|float]
 
 @dataclass
 class Checkpoint:
@@ -291,19 +291,20 @@ class Trainer:
 
             CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | error = {avg_error:.6f} | regularization = {avg_regularization:.6f} {peek_info}")
             
-            avg_grad_norms = {}
+            grad_data = {}
             if self.check_grad:
                 from rich.table import Table
                 table = Table(title="Gradient Norms")
                 table.add_column("Parameter", justify="left", style="cyan", no_wrap=True)
                 table.add_column("Avg Grad Norm", justify="right", style="magenta")
                 
-                for name, val in batch_grad_norms.items():
-                    avg_val = val / num_batches
-                    avg_grad_norms[name] = avg_val
-                    table.add_row(name, f"{avg_val:.6f}")
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None:
+                        # Save the entire gradient tensor (detached, moved to cpu)
+                        grad_data[name] = param.grad.detach().cpu().clone()
+                        avg_val = grad_data[name].abs().mean().item()
+                        table.add_row(name, f"{avg_val:.6f}")
                 CONSOLE.print(table)
-
             if patience is not None:
                 if avg_error < best_err - min_delta:
                     best_err = avg_error
@@ -315,7 +316,7 @@ class Trainer:
                     CONSOLE.print(f"[bold red]Early stopping triggered![/bold red] No improvement for {patience} epochs.")
                     break
 
-            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss,avg_regularization=avg_regularization,avg_err=avg_error ,gradient_data=avg_grad_norms))
+            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss, avg_regularization=avg_regularization, avg_err=avg_error, gradient_data=grad_data))
 
         checkpoint = Checkpoint(
             model=self.model,
@@ -395,6 +396,71 @@ class Trainer:
             json.dump(config, f, indent=4)
         CONSOLE.print(f"Exported training metadata to {config_path}")
 
+
+def animate_gradient_distributions(checkpoint: Checkpoint, bins: int = 50):
+    """
+    Animate the distribution of gradients for each parameter/layer across all epochs.
+    Each subplot corresponds to a parameter/layer, and updates per epoch.
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    import torch
+
+    # Gather all parameter names from the first epoch that has gradient data
+    param_names = []
+    for entry in checkpoint.training_history:
+        if entry.gradient_data:
+            param_names = list(entry.gradient_data.keys())
+            break
+    if not param_names:
+        print("No gradient data found in checkpoint.")
+        return
+
+    n_params = len(param_names)
+    ncols = int(n_params**0.5)
+    nrows = (n_params + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4, nrows * 3))
+    if n_params == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()
+
+    # Pre-extract all gradients for each param and epoch
+    grad_history = {name: [] for name in param_names}
+    for entry in checkpoint.training_history:
+        for name in param_names:
+            grad = entry.gradient_data.get(name)
+            if grad is not None:
+                if isinstance(grad, torch.Tensor):
+                    grad_history[name].append(grad.detach().cpu().flatten().numpy())
+                else:
+                    grad_history[name].append(None)
+            else:
+                grad_history[name].append(None)
+
+    def animate(epoch_idx):
+        for ax in axes:
+            ax.clear()
+        for i, name in enumerate(param_names):
+            ax = axes[i]
+            grad_vals = grad_history[name][epoch_idx]
+            if grad_vals is not None:
+                ax.hist(grad_vals, bins=bins, color="orange", edgecolor="black", alpha=0.7)
+                ax.set_title(f"{name}\nEpoch {epoch_idx+1}")
+                ax.set_xlabel("Gradient value")
+                ax.set_ylabel("Frequency")
+            else:
+                ax.set_title(f"{name}\nEpoch {epoch_idx+1} (no grad)")
+                ax.set_xticks([])
+                ax.set_yticks([])
+        fig.suptitle(f"Gradient Distributions per Layer (Epoch {epoch_idx+1})", fontsize=14)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    ani = animation.FuncAnimation(
+        fig, animate, frames=len(checkpoint.training_history), interval=700, repeat=True
+    )
+    plt.show()
 
 def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
     params_to_plot = {}

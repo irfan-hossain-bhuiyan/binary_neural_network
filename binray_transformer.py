@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
 from prelude import DEVICE, EarlyStopping, leaky_clamp, plot_training_loss, Trainer, split_dataset
-from data_utils import save_xor_dataset, load_xor_dataset
+from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
 def pass_invert(x: torch.Tensor) -> torch.Tensor:
@@ -128,7 +128,7 @@ class MultiLayerLogicGateNet(nn.Module):
     def constraint(self):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
-            layer.weight.clamp_(-3.0, 3.0)
+            layer.weight.clamp_(-20.0, 20.0)
             layer.tau_costraint(20)
     
     def regularization(self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
@@ -180,9 +180,50 @@ class MultiLayerLogicGateNet(nn.Module):
             else:
                 x = (1-x)
         return x
+def train_mnist():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dataset_path = Path("artifacts/mnist_binary.pt")
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"MNIST dataset not found at {dataset_path}. Please generate it first.")
+    x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
+    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
 
-def main():
-    print("checking if new code get updated")
+    net = MultiLayerLogicGateNet(
+        input_dim=784,
+        layer_dims=(256, 128, 64, 32,10),
+        use_softmax=True,
+    )
+
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
+    trainer = Trainer(
+        dataset=(x_train, y_train),
+        training_type=EarlyStopping(30, max_epochs=100),
+        batch_size=128,
+        model=net,
+        loss_fn=nn.HuberLoss(delta=0.5),
+        optimizer_cls=Adam,
+        optimizer_kwargs={"betas": (0.5, 0.5), "lr": 0.1},
+        regularization_fn=lambda: net.regularization(1e-1, 1e-1, 1e-1),
+        lr_schedular=ReduceLROnPlateau,
+        lr_schedular_kargs={
+            "mode": "min",
+            "factor": 0.5,
+            "patience": 15,
+            "threshold": 1e-3,
+            "min_lr": 1e-3,
+        },
+        constraint=net.constraint,
+        checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt"),
+        device=device,
+        check_grad=True,
+        peek=net.peek,
+    )
+    checkpoint = trainer.train()
+    plot_training_loss(checkpoint.get_avg_losses())
+    plot_weight_distribution(checkpoint.model)
+    return None
+
+def train_xor():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -233,6 +274,9 @@ def main():
     return None
 
 
+
+def main():
+    train_mnist()
 if __name__ == "__main__":
     main()
 
