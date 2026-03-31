@@ -538,7 +538,6 @@ def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
         optimizer_cls=c2.optimizer_cls,      
         optimizer_kwargs=c2.optimizer_kwargs, 
         loss_fn=c1.loss_fn,
-        lr=c2.lr
     )
 
     return Checkpoint(
