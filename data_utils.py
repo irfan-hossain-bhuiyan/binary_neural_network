@@ -50,7 +50,10 @@ def save_xor_dataset(
 
 def load_mnist(filepath: str | Path, device: torch.device | None = DEVICE, input_flatten: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """Load a previously saved MNIST (binary 0/1) dataset. Optionally flatten and binarize input."""
-    payload = torch.load(Path(filepath), map_location="cpu")
+    path = Path(filepath)
+    if not path.exists():
+        save_mnist(path)
+    payload = torch.load(path, map_location="cpu")
     x = payload["X"].float()
     y = payload["Y"].float()
     # Binarize input: 0 for 0-127, 1 for 128-255

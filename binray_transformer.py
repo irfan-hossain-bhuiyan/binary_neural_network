@@ -232,6 +232,9 @@ def train_xor():
         input_dim=64,
         layer_dims=(256, 128, 64, 32),
         use_softmax=True,
+        only_inverter=True,
+        initialization=nn.init.normal_,
+        max_threshold=0.95,
     )
     
     
