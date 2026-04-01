@@ -186,14 +186,12 @@ class MultiLayerLogicGateNet(nn.Module):
 def train_mnist():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/mnist_binary.pt")
-    if not dataset_path.exists():
-        raise FileNotFoundError(f"MNIST dataset not found at {dataset_path}. Please generate it first.")
     x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
     x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
 
     net = MultiLayerLogicGateNet(
         input_dim=784,
-        layer_dims=(256, 128, 64, 32,10),
+        layer_dims=(256, 128, 64,4),
         use_softmax=True,
     )
 
@@ -205,9 +203,9 @@ def train_mnist():
         model=net,
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
-        optimizer_kwargs={"betas": (0.5, 0.5), "lr": 0.1},
+        optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
         regularization_fn=lambda: net.regularization(1e-1, 1e-1, 1e-1),
-        lr_scheduler_factory=plateau_scheduler,
+        lr_scheduler_factory=plateau_scheduler(),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt"),
         device=device,
@@ -217,7 +215,7 @@ def train_mnist():
     checkpoint = trainer.train()
     plot_training_loss(checkpoint.avg_losses())
     plot_weight_distribution(checkpoint.model)
-    return None
+    return checkpoint
 
 def train_xor():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -263,12 +261,12 @@ def train_xor():
     plot_weight_distribution(checkpoint.model)
     
     # Cleanup TensorBoard
-    return None
+    return checkpoint
 
 
 
 def main():
-    train_xor()
+    train_mnist()
     #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
     #animate_gradient_distributions(checkpoint)    
 if __name__ == "__main__":
