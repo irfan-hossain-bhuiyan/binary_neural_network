@@ -48,14 +48,22 @@ def save_xor_dataset(
     torch.save({"X": x.cpu(), "Y": y.cpu(), "num_samples": num_samples}, path)
     return path
 
-def load_mnist(filepath: str | Path, device: torch.device | None = DEVICE, input_flatten: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+def load_mnist(filepath: str | Path, device: torch.device | None = DEVICE, input_flatten: bool = True, output_binarize: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """Load a previously saved MNIST (binary 0/1) dataset. Optionally flatten and binarize input."""
     path = Path(filepath)
     if not path.exists():
         save_mnist(path)
     payload = torch.load(path, map_location="cpu")
     x = payload["X"].float()
-    y = payload["Y"].float()
+    
+    # Load integer labels and optionally binarize them to 4 bits
+    y_labels = payload["Y"].long()
+    if output_binarize:
+        y = int_to_bits(y_labels, num_bits=4)
+    else:
+        y = torch.zeros((y_labels.size(0), 10), dtype=torch.float32)
+        y.scatter_(1, y_labels.unsqueeze(1), 1.0)
+    
     # Binarize input: 0 for 0-127, 1 for 128-255
     x = (x >= 128).float()
     if input_flatten:
@@ -110,12 +118,10 @@ def save_mnist(filepath: str | Path) -> Path:
     y = np.concatenate([y_train, y_test], axis=0)
     x = torch.tensor(x, dtype=torch.float32)
     y = torch.tensor(y, dtype=torch.long)
-    # Convert labels to one-hot vectors
-    y_onehot = torch.zeros((y.size(0), 10), dtype=torch.float32)
-    y_onehot.scatter_(1, y.unsqueeze(1), 1.0)
+    
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"X": x, "Y": y_onehot, "num_samples": x.size(0)}, path)
+    torch.save({"X": x, "Y": y, "num_samples": x.size(0)}, path)
     return path
 
 if __name__ == "__main__":

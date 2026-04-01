@@ -561,10 +561,12 @@ def evaluate_accuracy(
     threshold:  float        = 0.5,
     batch_size: int          = 200,
     device:     torch.device = DEVICE,
+    sample_wise_comparison: bool = False,
 ) -> float:
     """
     Bit-accuracy for binary / multi-label classification.
     Returns the fraction of bits predicted correctly across the full dataset.
+    If sample_wise_comparison is True, computes exact match accuracy per sample instead.
     """
     x_test, y_test = dataset
     model.eval()
@@ -576,11 +578,24 @@ def evaluate_accuracy(
             xb    = x_test[i : i + batch_size].to(device)
             yb    = y_test[i : i + batch_size].to(device)
             preds = (model(xb) >= threshold).float()
-            correct += (preds == yb).float().sum().item()
+            
+            if sample_wise_comparison:
+                # Compare per sample (row-wise match)
+                if yb.dim() > 1:
+                    correct += (preds == yb).all(dim=-1).float().sum().item()
+                else:
+                    correct += (preds == yb).float().sum().item()
+            else:
+                # Compare every individual bit
+                correct += (preds == yb).float().sum().item()
 
-    total_bits = total * (y_test.shape[-1] if y_test.dim() > 1 else 1)
+    if sample_wise_comparison:
+        total_items = total
+    else:
+        total_items = total * (y_test.shape[-1] if y_test.dim() > 1 else 1)
+        
     model.train()
-    return correct / total_bits
+    return correct / total_items
 
 
 # ══════════════════════════════════════════════
