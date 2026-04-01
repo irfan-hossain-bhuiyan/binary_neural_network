@@ -1,660 +1,853 @@
-from typing import Callable, Any
-from rich.console import Console
+"""
+trainer.py — Modular PyTorch training library.
+
+Modules
+-------
+  device        — Device resolution
+  types         — Core dataclasses (TrainConfig, HistoryEntry, Checkpoint)
+  stopping      — Stop-condition factories (early_stopping, stop_on_epoch)
+  scheduling    — LR scheduler factories (model-aware)
+  grad          — Gradient collection, vanishing detection, visualization
+  data          — Dataset splitting
+  checkpointing — Save / load / merge checkpoints
+  visualization — Loss curves, weight distributions, gradient animations
+  testing       — Accuracy evaluation
+  Trainer       — Main training orchestrator
+
+Constraint convention
+---------------------
+  If your model defines an ``apply_constraints(self)`` method, the Trainer
+  will call it automatically after every optimizer step — no wiring needed.
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import torch
-from pathlib import Path
-from dataclasses import dataclass
+import torch.nn as nn
+from torch import Tensor
+from torch.optim import Adam
+from rich.console import Console
+from rich.table import Table
 
-from typing import Callable
 
-def early_stopping(patience: int, min_delta: float = 1e-3, max_epochs: int = 500) -> Callable[[dict], bool]:
-    """
-    Returns a callback function for early stopping based on patience, min_delta, and max_epochs.
-    The returned function takes a metrics dict and returns True to stop training.
-    """
-    best_err = {'val': float('inf')}
-    epochs_no_improve = {'val': 0}
-    def callback(metrics: dict) -> bool:
-        epoch = metrics['epoch']
-        avg_error = metrics['avg_error']
-        if avg_error < best_err['val'] - min_delta:
-            best_err['val'] = avg_error
-            epochs_no_improve['val'] = 0
-        else:
-            epochs_no_improve['val'] += 1
-        if epochs_no_improve['val'] >= patience:
-            return True
-        if epoch >= max_epochs:
-            return True
-        return False
-    return callback
+# ══════════════════════════════════════════════
+# DEVICE
+# ══════════════════════════════════════════════
 
-def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
-    """
-    Returns a callback function that stops after max_epochs.
-    """
-    def callback(metrics: dict) -> bool:
-        return metrics['epoch'] >= max_epochs
-    return callback
-from torch import nn, tensor
-from typing import Any, Callable, Dict, Tuple
-import matplotlib.pyplot as plt
+def resolve_device() -> torch.device:
+    """Return CUDA device if available, otherwise CPU."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-from torch._prims_common import Tensor
+
+DEVICE:   torch.device = resolve_device()
+CONSOLE:  Console      = Console()
+
+
+# ══════════════════════════════════════════════
+# CORE DATACLASSES
+# ══════════════════════════════════════════════
 
 @dataclass
 class TrainConfig:
-    num_epochs: int
-    batch_size: int
-    optimizer_cls: str
-    optimizer_kwargs: dict[str, Any]
-    loss_fn: str
+    """Snapshot of the hyperparameters used for a training run."""
+    num_epochs:       int
+    batch_size:       int
+    optimizer_cls:    str
+    optimizer_kwargs: Dict[str, Any]
+    loss_fn:          str
+
+
+@dataclass
+class LayerGradStats:
+    """
+    Per-layer gradient statistics collected each epoch.
+
+    mean_abs        — average absolute gradient value per element.
+                      This is the primary vanishing-gradient signal used by
+                      researchers: if it falls below ~1e-6 in early layers
+                      while late layers remain high, gradients are vanishing.
+
+    norm_normalized — L2 norm divided by sqrt(numel), making it comparable
+                      across layers of different sizes.
+
+    max_abs         — largest individual gradient magnitude; catches sparse
+                      exploding gradients that mean_abs would average away.
+    """
+    mean_abs:        float
+    norm_normalized: float
+    max_abs:         float
+
 
 @dataclass
 class HistoryEntry:
-    epoch: int
-    avg_loss: float
-    avg_err: float
+    """Metrics recorded at the end of one epoch."""
+    epoch:              int
+    avg_loss:           float
+    avg_err:            float
     avg_regularization: float
-    gradient_data:Dict[str, Tensor|float]
+    # Maps parameter name -> LayerGradStats averaged over all batches.
+    grad_stats:         Dict[str, LayerGradStats]
+
+
+@dataclass
+class VanishingGradReport:
+    """
+    Result of detect_vanishing_gradients().
+
+    is_vanishing      — True when the first/last mean_abs ratio drops below
+                        ratio_threshold OR any layer's mean_abs drops below
+                        threshold.  This is the actionable boolean flag.
+    first_last_ratio  — mean_abs of the first parameter layer divided by that
+                        of the last.  Healthy networks are close to 1.0;
+                        values below 0.01 indicate severe vanishing.
+    frozen_layers     — parameter names whose mean_abs is below threshold;
+                        these layers are practically not learning.
+    per_layer         — mean_abs value for every parameter with a gradient.
+    min_mean_abs      — smallest mean_abs across all layers.
+    max_mean_abs      — largest mean_abs across all layers.
+    """
+    is_vanishing:      bool
+    first_last_ratio:  float
+    frozen_layers:     List[str]
+    per_layer:         Dict[str, float]
+    min_mean_abs:      float
+    max_mean_abs:      float
+
 
 @dataclass
 class Checkpoint:
-    model: nn.Module
-    train_config: TrainConfig
-    training_history: list[HistoryEntry]
+    """Everything needed to resume or analyse a finished training run."""
+    model:            nn.Module
+    train_config:     TrainConfig
+    training_history: List[HistoryEntry]
 
-    def get_avg_losses(self) -> list[float]:
-        return [entry.avg_loss for entry in self.training_history]
+    def avg_losses(self) -> List[float]:
+        return [e.avg_loss for e in self.training_history]
 
-def plot_training_loss(loss_history: list[float]):
-    plt.figure(figsize=(6, 4))
-    plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training Loss")
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    def avg_errors(self) -> List[float]:
+        return [e.avg_err for e in self.training_history]
 
-import inspect
 
-def call_with_matching_args(func, arg_dict):
+# ══════════════════════════════════════════════
+# STOPPING CONDITIONS
+# ══════════════════════════════════════════════
+
+def early_stopping(
+    patience:   int,
+    min_delta:  float = 1e-3,
+    max_epochs: int   = 500,
+) -> Callable[[dict], bool]:
     """
-    Calls `func` with only those arguments from `arg_dict` that match the function's signature.
+    Factory: plateau-based stopping.
+
+    Stops when avg_error has not improved by at least min_delta for
+    patience consecutive epochs, or when max_epochs is reached.
     """
-    sig = inspect.signature(func)
-    valid_keys = set(sig.parameters.keys())
-    filtered_args = {k: v for k, v in arg_dict.items() if k in valid_keys}
-    return func(**filtered_args)
+    state = {"best": float("inf"), "no_improve": 0}
+
+    def callback(metrics: dict) -> bool:
+        if metrics["avg_error"] < state["best"] - min_delta:
+            state["best"]       = metrics["avg_error"]
+            state["no_improve"] = 0
+        else:
+            state["no_improve"] += 1
+        return state["no_improve"] >= patience or metrics["epoch"] >= max_epochs
+
+    return callback
 
 
+def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
+    """Factory: stops exactly after max_epochs epochs."""
+    def callback(metrics: dict) -> bool:
+        return metrics["epoch"] >= max_epochs
+    return callback
 
-def save_training_checkpoint(checkpoint: Checkpoint, filepath: Path) -> None:
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(checkpoint, filepath)
 
-def load_training_checkpoint(filepath: str | Path, map_location: str | torch.device | None = None) -> Checkpoint:
-    checkpoint = torch.load(Path(filepath), map_location=map_location, weights_only=False)
-    if not isinstance(checkpoint, Checkpoint):
-        raise TypeError(f"Expected Checkpoint object, got {type(checkpoint)}")
-    return checkpoint
+# ══════════════════════════════════════════════
+# LR SCHEDULER FACTORIES  (model-aware)
+# ══════════════════════════════════════════════
+#
+# Signature:  factory(model, optimizer) -> LRScheduler
+#
+# The model argument lets you build param-group or layer-wise schedules.
+# The built-in factories do not need it but accept it for API consistency.
 
-from rich.table import Table
-from rich.console import Console
-from torch.optim import Adam
+def plateau_scheduler(
+    factor:   float = 0.5,
+    patience: int   = 10,
+    min_lr:   float = 1e-6,
+) -> Callable[[nn.Module, torch.optim.Optimizer], torch.optim.lr_scheduler.ReduceLROnPlateau]:
+    """Factory: ReduceLROnPlateau."""
+    def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=factor, patience=patience, min_lr=min_lr,
+        )
+    return factory
 
-def _resolve_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEVICE = _resolve_device()
-CONSOLE = Console()
+
+def cosine_annealing_scheduler(
+    T_max:   int,
+    eta_min: float = 0.0,
+) -> Callable[[nn.Module, torch.optim.Optimizer], torch.optim.lr_scheduler.CosineAnnealingLR]:
+    """Factory: CosineAnnealingLR."""
+    def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=eta_min)
+    return factory
+
+
+def step_scheduler(
+    step_size: int,
+    gamma:     float = 0.1,
+) -> Callable[[nn.Module, torch.optim.Optimizer], torch.optim.lr_scheduler.StepLR]:
+    """Factory: StepLR."""
+    def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
+        return torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    return factory
+
+
+# ══════════════════════════════════════════════
+# GRADIENT UTILITIES
+# ══════════════════════════════════════════════
 
 class LeakyClamp(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input, min_val, max_val, leak=0.01):
-        ctx.save_for_backward(input)
-        ctx.min_val = min_val
-        ctx.max_val = max_val
-        ctx.leak = leak
-        return torch.clamp(input, min=float(min_val), max=float(max_val))
+    """Clamp with a small gradient leak outside the clamped range."""
 
     @staticmethod
-    def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        # Mask where the input was within bounds
-        mask = (input >= ctx.min_val) & (input <= ctx.max_val)
+    def forward(ctx, x: Tensor, min_val: float, max_val: float, leak: float = 0.01) -> Tensor:
+        ctx.save_for_backward(x)
+        ctx.min_val, ctx.max_val, ctx.leak = min_val, max_val, leak
+        return torch.clamp(x, min=float(min_val), max=float(max_val))
 
-        # Gradient is 1.0 inside, and 'leak' outside
+    @staticmethod
+    def backward(ctx, grad_output: Tensor):
+        (x,) = ctx.saved_tensors
+        in_bounds  = (x >= ctx.min_val) & (x <= ctx.max_val)
         grad_input = grad_output.clone()
-        grad_input[~mask] *= ctx.leak
-
+        grad_input[~in_bounds] *= ctx.leak
         return grad_input, None, None, None
 
-# Usage helper
-def leaky_clamp(input, min_val, max_val, leak=0.01):
-    return LeakyClamp.apply(input, min_val, max_val, leak)
+
+def leaky_clamp(x: Tensor, min_val: float, max_val: float, leak: float = 0.01) -> Tensor:
+    return LeakyClamp.apply(x, min_val, max_val, leak)
+
+
+def collect_grad_stats(model: nn.Module) -> Dict[str, LayerGradStats]:
+    """
+    Collect per-layer gradient statistics for every parameter that currently
+    has a gradient.  Three metrics are returned — see LayerGradStats for the
+    rationale behind each choice.
+    """
+    stats: Dict[str, LayerGradStats] = {}
+    for name, param in model.named_parameters():
+        if param.grad is None:
+            continue
+        g = param.grad.detach()
+        n = g.numel()
+        stats[name] = LayerGradStats(
+            mean_abs        = g.abs().mean().item(),
+            norm_normalized = g.norm().item() / (n ** 0.5),
+            max_abs         = g.abs().max().item(),
+        )
+    return stats
+
+
+def detect_vanishing_gradients(
+    model:           nn.Module,
+    threshold:       float = 1e-6,
+    ratio_threshold: float = 0.01,
+) -> VanishingGradReport:
+    """
+    Inspect current gradients on model and return a structured report.
+
+    Detection criteria (either triggers is_vanishing = True):
+      1. mean_abs of first layer / mean_abs of last layer < ratio_threshold
+         (relative collapse across depth).
+      2. Any individual layer has mean_abs < threshold
+         (absolute freeze regardless of depth).
+
+    Call this right after loss.backward() and before optimizer.step().
+    """
+    per_layer: Dict[str, float] = {
+        name: param.grad.abs().mean().item()
+        for name, param in model.named_parameters()
+        if param.grad is not None
+    }
+
+    if not per_layer:
+        return VanishingGradReport(
+            is_vanishing=False, first_last_ratio=1.0, frozen_layers=[],
+            per_layer={}, min_mean_abs=0.0, max_mean_abs=0.0,
+        )
+
+    vals         = list(per_layer.values())
+    ratio        = vals[0] / (vals[-1] + 1e-12)
+    frozen       = [name for name, v in per_layer.items() if v < threshold]
+    is_vanishing = ratio < ratio_threshold or len(frozen) > 0
+
+    return VanishingGradReport(
+        is_vanishing     = is_vanishing,
+        first_last_ratio = ratio,
+        frozen_layers    = frozen,
+        per_layer        = per_layer,
+        min_mean_abs     = min(vals),
+        max_mean_abs     = max(vals),
+    )
+
+
+def _print_grad_table(avg_stats: Dict[str, LayerGradStats]) -> None:
+    """Print a rich table of per-layer gradient statistics."""
+    table = Table(title="Gradient Stats (epoch avg)", show_header=True, header_style="bold cyan")
+    table.add_column("parameter",       style="white",   overflow="fold")
+    table.add_column("mean_abs",        justify="right", style="magenta")
+    table.add_column("norm_normalized", justify="right", style="yellow")
+    table.add_column("max_abs",         justify="right", style="red")
+
+    if not avg_stats:
+        table.add_row("(no gradients)", "-", "-", "-")
+    else:
+        for name, s in sorted(avg_stats.items()):
+            table.add_row(name, f"{s.mean_abs:.4e}", f"{s.norm_normalized:.4e}", f"{s.max_abs:.4e}")
+    CONSOLE.print(table)
+
+
+def _print_vanishing_warning(report: VanishingGradReport, epoch: int) -> None:
+    CONSOLE.print(f"[bold red]Vanishing gradient detected at epoch {epoch}![/bold red]")
+    CONSOLE.print(f"   first/last ratio = [red]{report.first_last_ratio:.2e}[/red]")
+    if report.frozen_layers:
+        CONSOLE.print(f"   frozen layers    = [red]{report.frozen_layers}[/red]")
+    CONSOLE.print(f"   min mean_abs = {report.min_mean_abs:.2e}  |  max = {report.max_mean_abs:.2e}")
+
+
+# ══════════════════════════════════════════════
+# DATA UTILITIES
+# ══════════════════════════════════════════════
 
 def split_dataset(
-    x: torch.Tensor,
-    y: torch.Tensor,
+    x:           Tensor,
+    y:           Tensor,
     train_ratio: float = 0.8,
-    shuffle: bool = True,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Split tensors into train and test partitions."""
+    shuffle:     bool  = True,
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Split tensors into (x_train, y_train, x_test, y_test)."""
     if x.shape[0] != y.shape[0]:
-        raise ValueError(f"Mismatched samples: x={x.shape[0]}, y={y.shape[0]}")
+        raise ValueError(f"Mismatched sample counts: x={x.shape[0]}, y={y.shape[0]}")
     if not (0.0 < train_ratio < 1.0):
-        raise ValueError(f"train_ratio must be in (0,1), got {train_ratio}")
+        raise ValueError(f"train_ratio must be in (0, 1), got {train_ratio}")
 
     n = x.shape[0]
     if shuffle:
         perm = torch.randperm(n, device=x.device)
-        x = x[perm]
-        y = y[perm]
+        x, y = x[perm], y[perm]
 
     n_train = int(n * train_ratio)
     if n_train <= 0 or n_train >= n:
-        raise ValueError("train_ratio produced empty train or test split")
+        raise ValueError("train_ratio produced an empty train or test split.")
 
-    x_train = x[:n_train]
-    y_train = y[:n_train]
-    x_test = x[n_train:]
-    y_test = y[n_train:]
-    return x_train, y_train, x_test, y_test
+    return x[:n_train], y[:n_train], x[n_train:], y[n_train:]
 
-def _format_grad_stats(stats: dict[str, float], max_items: int = 6) -> Table:
-    table = Table(title="Gradient Norms", show_header=True, header_style="bold cyan")
-    table.add_column("param", style="white", overflow="fold")
-    table.add_column("norm", justify="right", style="magenta")
 
-    if not stats:
-        table.add_row("(no gradients)", "-")
-        return table
+# ══════════════════════════════════════════════
+# CHECKPOINTING
+# ══════════════════════════════════════════════
 
-    items = sorted(stats.items(), key=lambda kv: kv[0])[:max_items]
-    for k, v in items:
-        table.add_row(k, f"{v:.3e}")
-    return table
+def save_checkpoint(checkpoint: Checkpoint, filepath: Path | str) -> None:
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, filepath)
+    CONSOLE.print(f"[green]Checkpoint saved -> {filepath}[/green]")
 
-def _optimizer_name(optimizer_cls: type[torch.optim.Optimizer]) -> str:
-    return optimizer_cls.__name__
 
-def _loss_name(loss_fn: nn.modules.loss._Loss) -> str:
-    return loss_fn.__class__.__name__
-from torch import nn
+def load_checkpoint(
+    filepath:     Path | str,
+    map_location: str | torch.device | None = None,
+) -> Checkpoint:
+    ckpt = torch.load(Path(filepath), map_location=map_location, weights_only=False)
+    if not isinstance(ckpt, Checkpoint):
+        raise TypeError(f"Expected Checkpoint, got {type(ckpt)}")
+    return ckpt
 
-from dataclasses import dataclass
+
+def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
+    """
+    Chain two checkpoints end-to-end.
+
+    Inherits model weights, optimizer class, and batch size from ckpt2
+    (the later run).  Epoch numbers in ckpt2's history are offset so the
+    merged timeline is continuous.
+    """
+    c1, c2 = ckpt1.train_config, ckpt2.train_config
+
+    if type(ckpt1.model) is not type(ckpt2.model):
+        raise ValueError(f"Model architectures differ: {type(ckpt1.model)} vs {type(ckpt2.model)}")
+    if c1.loss_fn != c2.loss_fn:
+        raise ValueError("Cannot merge: loss functions differ.")
+    if c1.optimizer_cls != c2.optimizer_cls:
+        raise ValueError("Cannot merge: optimizers differ.")
+
+    last_epoch     = ckpt1.training_history[-1].epoch if ckpt1.training_history else 0
+    merged_history = list(ckpt1.training_history) + [
+        HistoryEntry(
+            epoch              = last_epoch + e.epoch,
+            avg_loss           = e.avg_loss,
+            avg_err            = e.avg_err,
+            avg_regularization = e.avg_regularization,
+            grad_stats         = e.grad_stats,
+        )
+        for e in ckpt2.training_history
+    ]
+
+    return Checkpoint(
+        model            = ckpt2.model,
+        train_config     = TrainConfig(
+            num_epochs       = c1.num_epochs + c2.num_epochs,
+            batch_size       = c2.batch_size,
+            optimizer_cls    = c2.optimizer_cls,
+            optimizer_kwargs = c2.optimizer_kwargs,
+            loss_fn          = c1.loss_fn,
+        ),
+        training_history = merged_history,
+    )
+
+
+# ══════════════════════════════════════════════
+# VISUALIZATION
+# ══════════════════════════════════════════════
+
+def plot_training_loss(loss_history: List[float]) -> None:
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(6, 4))
+    plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
+    plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.title("Training Loss")
+    plt.grid(alpha=0.3); plt.tight_layout(); plt.show()
+
+
+def plot_gradient_flow(checkpoint: Checkpoint) -> None:
+    """
+    Plot mean_abs gradient per layer over training epochs.
+
+    This is the standard gradient-flow plot used in research.
+    Healthy training shows roughly flat bars across layers; collapsing bars
+    in early layers indicate vanishing gradients.
+    """
+    import matplotlib.pyplot as plt
+
+    entries = checkpoint.training_history
+    if not entries or not entries[0].grad_stats:
+        CONSOLE.print("[yellow]No gradient stats found in checkpoint.[/yellow]")
+        return
+
+    param_names = list(entries[0].grad_stats.keys())
+
+    fig, ax = plt.subplots(figsize=(max(8, len(param_names) * 1.2), 4))
+    for entry in entries:
+        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        ax.plot(param_names, means, alpha=0.3, linewidth=1, color="steelblue")
+
+    # Highlight first and last epoch prominently.
+    for idx, label in [(0, "first epoch"), (-1, "last epoch")]:
+        entry = entries[idx]
+        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        ax.plot(param_names, means, linewidth=2.5, label=f"Epoch {entry.epoch} ({label})")
+
+    ax.set_yscale("log")
+    ax.set_xlabel("Layer / parameter")
+    ax.set_ylabel("Mean |gradient| (log scale)")
+    ax.set_title("Gradient Flow — mean_abs per layer across training")
+    ax.legend(); ax.grid(alpha=0.3)
+    plt.xticks(rotation=35, ha="right")
+    plt.tight_layout(); plt.show()
+
+
+def plot_weight_distribution(model: nn.Module, bins: int = 50, min_elements: int = 2) -> None:
+    import matplotlib.pyplot as plt
+    params = {
+        name: param.detach().cpu().flatten()
+        for name, param in model.named_parameters()
+        if param.numel() > min_elements
+    }
+    if not params:
+        CONSOLE.print("[yellow]No parameters large enough to plot.[/yellow]")
+        return
+
+    n     = len(params)
+    ncols = max(1, int(n ** 0.5))
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4, nrows * 3))
+    axes  = [axes] if n == 1 else list(axes.flatten())
+
+    for idx, (name, weights) in enumerate(params.items()):
+        ax = axes[idx]
+        ax.hist(weights.numpy(), bins=bins, color="steelblue", edgecolor="white")
+        ax.set_title(f"{name}\nmu={weights.mean():.3f}  sigma={weights.std():.3f}", fontsize=9)
+        ax.set_xlabel("Weight"); ax.set_ylabel("Count")
+
+    for ax in axes[n:]:
+        fig.delaxes(ax)
+    plt.tight_layout(); plt.show()
+
+
+def plot_checkpoints(checkpoints: List[Checkpoint], title: str = "Checkpoint Comparison") -> None:
+    import matplotlib.pyplot as plt
+    if not checkpoints:
+        return
+
+    n   = len(checkpoints)
+    fig = plt.figure(figsize=(12, 6 + 4 * n))
+    gs  = fig.add_gridspec(n + 1, 1)
+
+    ax_loss = fig.add_subplot(gs[0, 0])
+    for i, ckpt in enumerate(checkpoints):
+        c     = ckpt.train_config
+        label = f"Ckpt {i+1} (opt={c.optimizer_cls}, loss={c.loss_fn})"
+        ax_loss.plot(range(1, len(ckpt.avg_losses()) + 1), ckpt.avg_losses(), linewidth=2, label=label)
+    ax_loss.set(xlabel="Epoch", ylabel="Loss", title=f"{title} - Loss Curves")
+    ax_loss.grid(alpha=0.3); ax_loss.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    for i, ckpt in enumerate(checkpoints):
+        ax = fig.add_subplot(gs[i + 1, 0])
+        with torch.no_grad():
+            all_w = torch.cat([p.detach().cpu().flatten() for p in ckpt.model.parameters() if p.numel() > 1])
+        ax.hist(all_w.numpy(), bins=100, color=f"C{i}", alpha=0.7)
+        ax.set_title(f"Ckpt {i+1} weights - mu={all_w.mean():.3f}  sigma={all_w.std():.3f}")
+        ax.set(xlabel="Weight", ylabel="Count"); ax.grid(alpha=0.3)
+
+    plt.tight_layout(); plt.show()
+
+
+def animate_gradient_flow(checkpoint: Checkpoint) -> None:
+    """
+    Animate mean_abs gradient per layer across training epochs.
+    Each frame is one epoch; bar height is mean_abs on a log scale.
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+
+    entries = checkpoint.training_history
+    if not entries or not entries[0].grad_stats:
+        CONSOLE.print("[yellow]No gradient stats in checkpoint.[/yellow]")
+        return
+
+    param_names = list(entries[0].grad_stats.keys())
+    fig, ax     = plt.subplots(figsize=(max(8, len(param_names) * 1.2), 4))
+
+    def animate(epoch_idx: int):
+        ax.clear()
+        entry = entries[epoch_idx]
+        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        ax.bar(param_names, means, color="orange", edgecolor="black")
+        ax.set_yscale("log")
+        ax.set_ylabel("Mean |gradient|")
+        ax.set_title(f"Gradient Flow - Epoch {entry.epoch}")
+        plt.xticks(rotation=35, ha="right")
+        plt.tight_layout()
+
+    animation.FuncAnimation(fig, animate, frames=len(entries), interval=700, repeat=True)
+    plt.show()
+
+
+# ══════════════════════════════════════════════
+# TESTING / EVALUATION
+# ══════════════════════════════════════════════
+
+def evaluate_accuracy(
+    model:      nn.Module,
+    dataset:    Tuple[Tensor, Tensor],
+    threshold:  float        = 0.5,
+    batch_size: int          = 200,
+    device:     torch.device = DEVICE,
+) -> float:
+    """
+    Bit-accuracy for binary / multi-label classification.
+    Returns the fraction of bits predicted correctly across the full dataset.
+    """
+    x_test, y_test = dataset
+    model.eval()
+    correct = 0.0
+    total   = x_test.size(0)
+
+    with torch.no_grad():
+        for i in range(0, total, batch_size):
+            xb    = x_test[i : i + batch_size].to(device)
+            yb    = y_test[i : i + batch_size].to(device)
+            preds = (model(xb) >= threshold).float()
+            correct += (preds == yb).float().sum().item()
+
+    total_bits = total * (y_test.shape[-1] if y_test.dim() > 1 else 1)
+    model.train()
+    return correct / total_bits
+
+
+# ══════════════════════════════════════════════
+# INTERNAL HELPERS
+# ══════════════════════════════════════════════
+
+def _call_matching(func: Callable, arg_dict: Dict[str, Any]) -> Any:
+    """Call func forwarding only the kwargs its signature accepts."""
+    valid = set(inspect.signature(func).parameters)
+    return func(**{k: v for k, v in arg_dict.items() if k in valid})
+
+
+def _format_peek(peek_results: Dict[str, Any]) -> str:
+    return " | ".join(
+        f"{k} = {v:.6f}" if isinstance(v, float) else f"{k} = {v}"
+        for k, v in peek_results.items()
+    )
+
+
+def _accumulate_grad_stats(
+    acc: Dict[str, LayerGradStats],
+    new: Dict[str, LayerGradStats],
+) -> Dict[str, LayerGradStats]:
+    """Sum two LayerGradStats dicts element-wise (for later averaging)."""
+    result = dict(acc)
+    for name, s in new.items():
+        if name in result:
+            prev = result[name]
+            result[name] = LayerGradStats(
+                mean_abs        = prev.mean_abs        + s.mean_abs,
+                norm_normalized = prev.norm_normalized + s.norm_normalized,
+                max_abs         = prev.max_abs         + s.max_abs,
+            )
+        else:
+            result[name] = s
+    return result
+
+
+def _divide_grad_stats(acc: Dict[str, LayerGradStats], n: int) -> Dict[str, LayerGradStats]:
+    return {
+        name: LayerGradStats(
+            mean_abs        = s.mean_abs        / n,
+            norm_normalized = s.norm_normalized / n,
+            max_abs         = s.max_abs         / n,
+        )
+        for name, s in acc.items()
+    }
+
+
+# ══════════════════════════════════════════════
+# TRAINER
+# ══════════════════════════════════════════════
 
 @dataclass
 class Trainer:
-    def __init__(
-        self,
-        model: torch.nn.Module,
-        dataset: Tuple[torch.Tensor, torch.Tensor],
-        stop_on: Callable[[dict], bool],  # Receives metrics dict, returns True to stop
-        batch_size: int,
-        loss_fn: nn.modules.loss._Loss = nn.MSELoss(),
-        error_fn: nn.modules.loss._Loss = nn.L1Loss(),
-        regularization_fn: Callable[[], torch.Tensor] | None = None,
-        checkpoint_path: Path | None = None,
-        optimizer_kwargs: Dict[str, Any] | None = None,
-        optimizer_cls: type[torch.optim.Optimizer] = Adam,
-        lr_schedular: Callable[..., torch.optim.lr_scheduler.LRScheduler] | Any | None = None,
-        constraint: None | Callable = None,
-        lr_schedular_kargs: Dict[str, Any]|None = None,
-        device=DEVICE,
-        check_grad: bool = False,
-        peek: Callable[[], Dict[str, Any]] | None = None
-    ):
-        
-        lr_schedular_kargs = {} if lr_schedular_kargs is None else lr_schedular_kargs
-            
-        self.model = model
-        self.dataset = dataset
-        self.stop_on = stop_on
-        self.batch_size = batch_size
-        self.loss_fn = loss_fn
-        self.error_fn =error_fn
-        self.regularization_fn = regularization_fn
-        self.checkpoint_path = checkpoint_path
+    """
+    Orchestrates model training.
 
-        # Ensure 'lr' is present in optimizer_kwargs, else add it
-        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
-        self.optimizer_cls = optimizer_cls
-        self.lr_schedular = lr_schedular
-        self.constraint = constraint
-        self.lr_schedular_kargs = lr_schedular_kargs
-        self.device = device
-        self.check_grad = check_grad
-        self.peek = peek
+    Parameters
+    ----------
+    model :
+        The network to train.  If the model defines an apply_constraints(self)
+        method it will be called automatically after every optimizer step.
+    dataset :
+        (x, y) tensors — the full training set.
+    stop_on :
+        (metrics: dict) -> bool — return True to halt.
+    batch_size :
+        Mini-batch size.
+    loss_fn :
+        Training loss (default MSELoss).
+    error_fn :
+        Reporting metric only, not back-propagated (default L1Loss).
+    regularization_fn :
+        () -> Tensor — scalar added to the loss each batch.
+    checkpoint_path :
+        If set, the final Checkpoint is saved here automatically.
+    optimizer_kwargs :
+        Forwarded to the optimizer constructor.
+    optimizer_cls :
+        Optimizer class (default Adam).
+    lr_scheduler_factory :
+        (model, optimizer) -> LRScheduler.
+    device :
+        Target device.
+    check_grad :
+        Print a per-parameter gradient-stats table each epoch.
+    vanishing_grad_check_every :
+        Run detect_vanishing_gradients every N epochs and warn if detected.
+        Set to 0 to disable.
+    constraint :
+        Optional ``() -> None`` called after every optimizer step.
+        Use this for constraints that live outside the model class — generic
+        clamps, one-off lambdas, etc.  If the model also defines
+        ``apply_constraints(self)``, both are called: constraint first, then
+        the model method.
+    peek :
+        () -> Dict[str, Any] appended to the per-epoch console line.
+    """
 
+    model:                      nn.Module
+    dataset:                    Tuple[Tensor, Tensor]
+    stop_on:                    Callable[[dict], bool]
+    batch_size:                 int
+    loss_fn:                    nn.modules.loss._Loss                  = field(default_factory=nn.MSELoss)
+    error_fn:                   nn.modules.loss._Loss                  = field(default_factory=nn.L1Loss)
+    regularization_fn:          Optional[Callable[[], Tensor]]         = None
+    checkpoint_path:            Optional[Path]                         = None
+    optimizer_kwargs:           Dict[str, Any]                         = field(default_factory=dict)
+    optimizer_cls:              Type[torch.optim.Optimizer]            = Adam
+    lr_scheduler_factory:       Optional[Callable[..., Any]]           = None
+    device:                     torch.device                           = field(default_factory=resolve_device)
+    check_grad:                 bool                                   = False
+    vanishing_grad_check_every: int                                    = 10
+    constraint:                 Optional[Callable[[nn.Module], None]]           = None
+    peek:                       Optional[Callable[[], Dict[str, Any]]] = None
+
+    # ------------------------------------------------------------------
     def train(self) -> Checkpoint:
         self.model = self.model.to(self.device)
+
         optimizer = self.optimizer_cls(self.model.parameters(), **self.optimizer_kwargs)
+        scheduler = (
+            self.lr_scheduler_factory(self.model, optimizer)
+            if self.lr_scheduler_factory is not None else None
+        )
 
-        if self.lr_schedular is not None:
-            scheduler = self.lr_schedular(optimizer, **self.lr_schedular_kargs)
-        else:
-            scheduler = None
-            
-        x_data, y_data = self.dataset
-        x_train = x_data.to(self.device)
-        y_train = y_data.to(self.device)
-        train_count = x_train.shape[0]
 
-        # Remove EarlyStopping/int logic; rely on stop_on function
-        best_err = float('inf')
-        epochs_no_improve = 0
-
-        history: list[HistoryEntry] = []
-        
+        x_train, y_train = (t.to(self.device) for t in self.dataset)
+        n_samples        = x_train.shape[0]
+        history: List[HistoryEntry] = []
         epoch = 0
+
         while True:
             epoch += 1
-            perm = torch.randperm(train_count, device=self.device)
-            X_epoch = x_train[perm]
-            Y_epoch = y_train[perm]
-            epoch_loss = 0.0
-            epoch_error = 0.0
-            epoch_regularization = 0.0
+            perm    = torch.randperm(n_samples, device=self.device)
+            x_epoch = x_train[perm]
+            y_epoch = y_train[perm]
+
+            epoch_loss = epoch_error = epoch_reg = 0.0
+            acc_stats: Dict[str, LayerGradStats] = {}
             num_batches = 0
-            batch_grads: dict[str, Tensor] = {}
-            
-            for i in range(0, train_count, self.batch_size):
-                xb = X_epoch[i : i + self.batch_size]
-                yb = Y_epoch[i : i + self.batch_size]
+
+            for i in range(0, n_samples, self.batch_size):
+                xb = x_epoch[i : i + self.batch_size]
+                yb = y_epoch[i : i + self.batch_size]
 
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(xb)
-
-                reg_loss = tensor(0.0)
-                if self.regularization_fn is not None:
-                    reg_loss = self.regularization_fn()
-                loss = self.loss_fn(logits, yb) + reg_loss
+                reg    = self.regularization_fn() if self.regularization_fn is not None else torch.tensor(0.0)
+                loss   = self.loss_fn(logits, yb) + reg
                 loss.backward()
-                
-                for name, param in self.model.named_parameters():
-                    if param.grad is not None:
-                        batch_grad = param.grad.mean(dim=0).abs().detach()
-                        batch_grads[name] = batch_grads.get(name, 0.0) + batch_grad
+
+                # Collect stats right after backward, before step.
+                acc_stats = _accumulate_grad_stats(acc_stats, collect_grad_stats(self.model))
 
                 optimizer.step()
 
                 with torch.no_grad():
-                    epoch_error+=self.error_fn(logits,yb).item()
+                    epoch_error += self.error_fn(logits, yb).item()
                     if self.constraint is not None:
-                        self.constraint()
-
+                        self.constraint(self.model)
                 epoch_loss += loss.item()
-                epoch_regularization+=reg_loss.item()
+                epoch_reg  += reg.item()
                 num_batches += 1
-                grad_data={}
-            for name, param in self.model.named_parameters():
-                grad_data[name]=batch_grads[name]/num_batches
 
-            avg_loss = epoch_loss / num_batches
-            avg_error = epoch_error/num_batches
-            avg_regularization = epoch_regularization/num_batches
+            # ── Epoch averages ─────────────────────────────────────────
+            avg_loss  = epoch_loss  / num_batches
+            avg_error = epoch_error / num_batches
+            avg_reg   = epoch_reg   / num_batches
+            avg_stats = _divide_grad_stats(acc_stats, num_batches)
+
+            # ── LR scheduler ───────────────────────────────────────────
             if scheduler is not None:
-                # Use call_with_matching_args to flexibly call scheduler.step with available metrics
-                call_with_matching_args(scheduler.step, {'metrics': avg_error, 'loss': avg_error, 'avg_error': avg_error})
-            
-            peek_info = ""
-            if self.peek is not None:
-                peek_results = self.peek()
-                formatted_peeks = []
-                for k, v in peek_results.items():
-                    if isinstance(v, float):
-                        formatted_peeks.append(f"{k} = {v:.6f}")
-                    else:
-                        formatted_peeks.append(f"{k} = {v}")
-                if formatted_peeks:
-                    peek_info = " | " + " | ".join(formatted_peeks)
+                _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error})
 
-            CONSOLE.print(f"Epoch {epoch:03d} | loss = {avg_loss:.6f} | error = {avg_error:.6f} | regularization = {avg_regularization:.6f} {peek_info}")
-            
+            # ── Vanishing gradient detection ───────────────────────────
+            if self.vanishing_grad_check_every > 0 and epoch % self.vanishing_grad_check_every == 0:
+                report = detect_vanishing_gradients(self.model)
+                if report.is_vanishing:
+                    _print_vanishing_warning(report, epoch)
+
+            # ── Console logging ────────────────────────────────────────
+            peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
+            CONSOLE.print(
+                f"Epoch [bold]{epoch:04d}[/bold] | "
+                f"loss = [red]{avg_loss:.6f}[/red] | "
+                f"error = [yellow]{avg_error:.6f}[/yellow] | "
+                f"reg = {avg_reg:.6f}"
+                + peek_str
+            )
+
             if self.check_grad:
-                from rich.table import Table
-                table = Table(title="Gradient Norms")
-                table.add_column("Parameter", justify="left", style="cyan", no_wrap=True)
-                table.add_column("Avg Grad Norm", justify="right", style="magenta")
-                
-                for name, param in self.model.named_parameters():
-                    if param.grad is not None:
-                        # Save the entire gradient tensor (detached, moved to cpu)
-                        avg_val = grad_data[name].mean().item()
-                        table.add_row(name, f"{avg_val:.6f}")
-                CONSOLE.print(table)
-            # Call stop_on function with metrics; break if it returns True
+                _print_grad_table(avg_stats)
+
+            # ── History ────────────────────────────────────────────────
+            history.append(HistoryEntry(
+                epoch              = epoch,
+                avg_loss           = avg_loss,
+                avg_err            = avg_error,
+                avg_regularization = avg_reg,
+                grad_stats         = avg_stats,
+            ))
+
+            # ── Stopping condition ─────────────────────────────────────
             stop_metrics = {
-                'epoch': epoch,
-                'avg_loss': avg_loss,
-                'avg_error': avg_error,
-                'avg_regularization': avg_regularization,
-                'history': history,
-                'model': self.model,
+                "epoch":              epoch,
+                "avg_loss":           avg_loss,
+                "avg_error":          avg_error,
+                "avg_regularization": avg_reg,
+                "history":            history,
+                "model":              self.model,
             }
             if self.stop_on(stop_metrics):
-                CONSOLE.print(f"[bold red]Stopping triggered by stop_on function at epoch {epoch}![/bold red]")
+                CONSOLE.print(f"[bold red]Stopping at epoch {epoch}.[/bold red]")
                 break
 
-            history.append(HistoryEntry(epoch=epoch, avg_loss=avg_loss, avg_regularization=avg_regularization, avg_err=avg_error, gradient_data=grad_data))
-
+        # ── Build and optionally save checkpoint ───────────────────────
         checkpoint = Checkpoint(
-            model=self.model,
-            train_config=TrainConfig(
-                num_epochs=epoch,
-                batch_size=self.batch_size,
-                optimizer_cls=self.optimizer_cls.__name__,
-                optimizer_kwargs=self.optimizer_kwargs,
-                loss_fn=self.loss_fn.__class__.__name__,
+            model        = self.model,
+            train_config = TrainConfig(
+                num_epochs       = epoch,
+                batch_size       = self.batch_size,
+                optimizer_cls    = self.optimizer_cls.__name__,
+                optimizer_kwargs = self.optimizer_kwargs,
+                loss_fn          = self.loss_fn.__class__.__name__,
             ),
-            training_history=history,
+            training_history = history,
         )
 
         if self.checkpoint_path is not None:
-            save_training_checkpoint(checkpoint, self.checkpoint_path)
+            save_checkpoint(checkpoint, self.checkpoint_path)
 
         return checkpoint
 
-    def export_for_burn(self, export_dir: str | Path):
-        """
-        Exports the model to ONNX and the training dataset to a format consumable by a Rust burn.rs program.
-        We'll save the ONNX file and use `.safetensors` or standard numpy `.npz` for the dataset.
-        """
+    # ------------------------------------------------------------------
+    def export_for_burn(self, export_dir: str | Path) -> None:
+        """Export model (ONNX) + dataset (.npz) + config (.json) for burn.rs."""
         import numpy as np
-        
-        export_dir = Path(export_dir)
+
+        export_dir  = Path(export_dir)
         export_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 1. Export model to ONNX
-        dummy_x, _ = self.dataset
-        # Create a tiny dummy input matching the shape of one dataset entry, or batch
-        dummy_input = dummy_x[:0].unsqueeze(0) if dummy_x.dim() == 1 else dummy_x[:1]
-        
+        x_data, y_data = self.dataset
+        dummy_input    = x_data[:1] if x_data.dim() > 1 else x_data[:1].unsqueeze(0)
+
         onnx_path = export_dir / "model.onnx"
         self.model.eval()
         torch.onnx.export(
-            self.model.cpu(), 
-            dummy_input.cpu(), 
-            str(onnx_path), 
-            export_params=True,
-            do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}}
+            self.model.cpu(), dummy_input.cpu(), str(onnx_path),
+            export_params=True, do_constant_folding=True,
+            input_names=["input"], output_names=["output"],
         )
-        CONSOLE.print(f"Exported ONNX model to {onnx_path}")
-        
-        # 2. Export dataset
-        x_data, y_data = self.dataset
+        CONSOLE.print(f"[green]ONNX model -> {onnx_path}[/green]")
+
         dataset_path = export_dir / "dataset.npz"
-        np.savez(
-            dataset_path, 
-            x=x_data.cpu().numpy(), 
-            y=y_data.cpu().numpy()
-        )
-        CONSOLE.print(f"Exported dataset to {dataset_path}")
-        
-        # 3. Export train config
-        import json
+        np.savez(dataset_path, x=x_data.cpu().numpy(), y=y_data.cpu().numpy())
+        CONSOLE.print(f"[green]Dataset    -> {dataset_path}[/green]")
+
         config_path = export_dir / "train_config.json"
-        
-        if isinstance(self.training_type, int):
-            num_epochs = self.training_type
-            patience = None
-        else:
-            num_epochs = self.training_type.max_epochs
-            patience = self.training_type.patience
-            
-        config = {
-            "num_epochs": num_epochs,
-            "batch_size": self.batch_size,
-            "loss_fn": self.loss_fn.__class__.__name__,
-            "optimizer": self.optimizer_cls.__name__,
-            "patience": patience
-        }
         with open(config_path, "w") as f:
-            json.dump(config, f, indent=4)
-        CONSOLE.print(f"Exported training metadata to {config_path}")
-
-
-def animate_gradient_distributions(checkpoint: Checkpoint, bins: int = 50):
-    """
-    Animate the distribution of gradients for each parameter/layer across all epochs.
-    Each subplot corresponds to a parameter/layer, and updates per epoch.
-    """
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-    import torch
-
-    # Gather all parameter names from the first epoch that has gradient data
-    param_names = []
-    for entry in checkpoint.training_history:
-        if entry.gradient_data:
-            param_names = list(entry.gradient_data.keys())
-            break
-    if not param_names:
-        print("No gradient data found in checkpoint.")
-        return
-
-    n_params = len(param_names)
-    ncols = int(n_params**0.5)
-    nrows = (n_params + ncols - 1) // ncols
-
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4, nrows * 3))
-    if n_params == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten()
-
-    # Pre-extract all gradients for each param and epoch
-    grad_history = {name: [] for name in param_names}
-    for entry in checkpoint.training_history:
-        for name in param_names:
-            grad = entry.gradient_data.get(name)
-            if grad is not None:
-                if isinstance(grad, torch.Tensor):
-                    grad_history[name].append(grad.detach().cpu().flatten().numpy())
-                else:
-                    grad_history[name].append(None)
-            else:
-                grad_history[name].append(None)
-
-    def animate(epoch_idx):
-        for ax in axes:
-            ax.clear()
-        for i, name in enumerate(param_names):
-            ax = axes[i]
-            grad_vals = grad_history[name][epoch_idx]
-            if grad_vals is not None:
-                ax.hist(grad_vals, bins=bins, color="orange", edgecolor="black", alpha=0.7)
-                ax.set_title(f"{name}\nEpoch {epoch_idx+1}")
-                ax.set_xlabel("Gradient value")
-                ax.set_ylabel("Frequency")
-            else:
-                ax.set_title(f"{name}\nEpoch {epoch_idx+1} (no grad)")
-                ax.set_xticks([])
-                ax.set_yticks([])
-        fig.suptitle(f"Gradient Distributions per Layer (Epoch {epoch_idx+1})", fontsize=14)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
-    ani = animation.FuncAnimation(
-        fig, animate, frames=len(checkpoint.training_history), interval=700, repeat=True
-    )
-    plt.show()
-
-def plot_weight_distribution(model: nn.Module, bins: int = 50, n_size: int = 1):
-    params_to_plot = {}
-    with torch.no_grad():
-        for name, param in model.named_parameters():
-            if param.numel() > n_size:
-                params_to_plot[name] = param.detach().cpu().flatten()
-
-    num_plots = len(params_to_plot)
-    if num_plots == 0:
-        return
-
-    cols = int(num_plots**0.5)
-    if cols * cols < num_plots:
-        cols += 1
-    rows = (num_plots + cols - 1) // cols
-
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 3))
-    # Ensure axes is iterable even if it's a single plot
-    if num_plots == 1:
-        axes = [axes]
-    elif num_plots > 1:
-        axes = axes.flatten()
-
-    for idx, (name, all_weights) in enumerate(params_to_plot.items()):
-        ax = axes[idx]
-        ax.hist(all_weights.numpy(), bins=bins, color="steelblue", edgecolor="white")
-        ax.set_xlabel("Weight value")
-        ax.set_ylabel("Frequency")
-        ax.set_title(f"{name}\nmean={all_weights.mean():.3f}, std={all_weights.std():.3f}", fontsize=10)
-
-    # Remove any extra empty subplots
-    for idx in range(num_plots, len(axes)):
-        fig.delaxes(axes[idx])
-
-    plt.tight_layout()
-    plt.show()
-
-def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
-    """Merges two checkpoints, chaining the training history together.
-    
-    The latest model parameters, optimizer, and learning rate are inherited
-    from the second checkpoint (`ckpt2`).
-    """
-    c1 = ckpt1.train_config
-    c2 = ckpt2.train_config
-    
-    # Validation
-    if type(ckpt1.model) != type(ckpt2.model):
-        raise ValueError(f"Model architectures do not match: {type(ckpt1.model)} vs {type(ckpt2.model)}")
-    if c1.loss_fn != c2.loss_fn:
-        raise ValueError("Cannot merge checkpoints: loss functions are missing or mismatched.")
-    if c1.optimizer_cls != c2.optimizer_cls:
-        raise ValueError("Cannot merge checkpoints: optimizers are mismatched.")
-        
-    merged_history = list(ckpt1.training_history)
-    # The last recorded epoch from the first training sprint
-    last_epoch = merged_history[-1].epoch if merged_history else 0
-    
-    # Adjust epoch numbers and append the history of the second checkpoint
-    for entry in ckpt2.training_history:
-        merged_history.append(
-            HistoryEntry(
-                epoch=last_epoch + entry.epoch,
-                avg_loss=entry.avg_loss,
-                avg_err=entry.avg_err,
-                avg_regularization=entry.avg_regularization,
-                gradient_data=entry.gradient_data
+            json.dump(
+                {
+                    "batch_size":       self.batch_size,
+                    "loss_fn":          self.loss_fn.__class__.__name__,
+                    "optimizer":        self.optimizer_cls.__name__,
+                    "optimizer_kwargs": self.optimizer_kwargs,
+                },
+                f, indent=4,
             )
-        )
-        
-    merged_config = TrainConfig(
-        num_epochs=c1.num_epochs + c2.num_epochs,
-        batch_size=c2.batch_size,            # Prefer latest run configuration
-        optimizer_cls=c2.optimizer_cls,      
-        optimizer_kwargs=c2.optimizer_kwargs, 
-        loss_fn=c1.loss_fn,
-    )
-
-    return Checkpoint(
-        model=ckpt2.model,  # Take the weights trained up to the latest point
-        train_config=merged_config,
-        training_history=merged_history
-    )
-
-def plot_checkpoints(checkpoints: list[Checkpoint], title: str = "Checkpoint Comparison"):
-    if not checkpoints:
-        return
-
-    num_checkpoints = len(checkpoints)
-
-    loss_data = []
-    labels = []
-    
-    for i, ckpt in enumerate(checkpoints):
-        losses = ckpt.get_avg_losses()
-        c = ckpt.train_config
-        opt = c.optimizer_cls
-        loss_fn = c.loss_fn
-        label = f"Ckpt {i+1} (Opt={opt}, Loss={loss_fn})"
-        loss_data.append(losses)
-        labels.append(label)
-
-    fig = plt.figure(figsize=(12, 6 + 4 * num_checkpoints))
-    gs = fig.add_gridspec(num_checkpoints + 1, 1)
-
-    ax_loss = fig.add_subplot(gs[0, 0])
-    for i, losses in enumerate(loss_data):
-        ax_loss.plot(range(1, len(losses) + 1), losses, linewidth=2, label=labels[i])
-    
-    ax_loss.set_xlabel("Epoch")
-    ax_loss.set_ylabel("Loss")
-    ax_loss.set_title(f"{title} - Loss Curves")
-    ax_loss.grid(alpha=0.3)
-    ax_loss.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-    for i, ckpt in enumerate(checkpoints):
-        ax_weights = fig.add_subplot(gs[i + 1, 0])
-        all_weights = []
-        with torch.no_grad():
-            for name, param in ckpt.model.named_parameters():
-                if param.numel() > 1:
-                    all_weights.append(param.detach().cpu().flatten())
-        
-        if all_weights:
-            all_weights = torch.cat(all_weights)
-            ax_weights.hist(all_weights.numpy(), bins=100, color=f"C{i}", alpha=0.7)
-            mean_w = all_weights.mean().item()
-            std_w = all_weights.std().item()
-            ax_weights.set_title(f"{labels[i]} - Weights (Mean: {mean_w:.3f}, Std: {std_w:.3f})")
-            ax_weights.set_xlabel("Weight Value")
-            ax_weights.set_ylabel("Frequency")
-            ax_weights.grid(alpha=0.3)
-
-    plt.tight_layout()
-    plt.show()
-
-def testing(
-    model: nn.Module,
-    dataset:Tuple[Tensor,Tensor],
-    threshold: float = 0.5,
-    # threshold is for what value it will be treated as 1.
-    num_samples: int = 2000,
-    device: torch.device=DEVICE,
-) -> float:
-    x_test,y_test=dataset
-    model.eval()
-    with torch.no_grad():
-        
-        X_test = x_test.to(device)
-        Y_test = y_test.to(device)
-            
-        # evaluate in batches to prevent OutOfMemory errors on evaluation
-        batch_size = 200
-        correct_bits_sum = 0.0
-        total_samples = X_test.size(0)
-        
-        with torch.no_grad():
-            for i in range(0, total_samples, batch_size):
-                X_batch = X_test[i:i+batch_size]
-                Y_batch = Y_test[i:i+batch_size]
-                
-                logits = model(X_batch)
-                preds = (logits >= threshold).float()
-                
-                correct_bits_sum += (preds == Y_batch).float().sum().item()
-                
-                            
-        # Compute exact mean based on total bits processed
-        total_bits = total_samples * (Y_test.shape[-1] if Y_test.dim() > 1 else 1)
-        correct_bits = correct_bits_sum / total_bits
-    model.train()
-    return correct_bits
-
-
+        CONSOLE.print(f"[green]Config     -> {config_path}[/green]")

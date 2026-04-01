@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, early_stopping, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, animate_gradient_flow, early_stopping,load_checkpoint, plateau_scheduler, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -125,15 +125,10 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def constraint(self):
-        for layer in self.expectation_layers:
-            layer = cast(OrGateLayer, layer)
-            layer.weight.clamp_(-20.0, 20.0)
-            layer.tau_costraint(20)
-    
-    def regularization(self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
+        
+    def regularization(module:MultiLayerLogicGateNet, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
-        for layer in self.expectation_layers:
+        for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
             w = layer.weight
             l1_error = w.relu().mean()
@@ -158,6 +153,13 @@ class MultiLayerLogicGateNet(nn.Module):
                     layer = cast(OrGateLayer, layer)
                     result[f"tau_{i}"] = layer.tau.item()
         return result
+    
+    def constraint(module:MultiLayerLogicGateNet):
+        for layer in module.expectation_layers:
+            layer = cast(OrGateLayer, layer)
+            layer.weight.clamp_(-20.0, 20.0)
+            layer.tau_costraint(20)
+
 
     @property
     def tau(self) -> torch.Tensor | list[torch.Tensor]:
@@ -180,6 +182,7 @@ class MultiLayerLogicGateNet(nn.Module):
             else:
                 x = (1-x)
         return x
+
 def train_mnist():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/mnist_binary.pt")
@@ -204,22 +207,15 @@ def train_mnist():
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 0.1},
         regularization_fn=lambda: net.regularization(1e-1, 1e-1, 1e-1),
-        lr_schedular=ReduceLROnPlateau,
-        lr_schedular_kargs={
-            "mode": "min",
-            "factor": 0.5,
-            "patience": 15,
-            "threshold": 1e-3,
-            "min_lr": 1e-3,
-        },
-        constraint=net.constraint,
+        lr_scheduler_factory=plateau_scheduler,
+        constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt"),
         device=device,
         check_grad=True,
         peek=net.peek,
     )
     checkpoint = trainer.train()
-    plot_training_loss(checkpoint.get_avg_losses())
+    plot_training_loss(checkpoint.avg_losses())
     plot_weight_distribution(checkpoint.model)
     return None
 
@@ -251,15 +247,8 @@ def train_xor():
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.1},
         regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
-        lr_schedular=ReduceLROnPlateau,
-        lr_schedular_kargs={
-            "mode": "min",
-            "factor": 0.5,
-            "patience": 15,
-            "threshold": 1e-3,
-            "min_lr": 1e-3,
-        },
-        constraint=net.constraint,
+        lr_scheduler_factory=plateau_scheduler(),
+        constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
         device=device,
         check_grad=True,
@@ -267,7 +256,7 @@ def train_xor():
     )
     checkpoint = trainer.train()
     #trainer.export_for_burn(Path("artifacts/burn_export"))
-    plot_training_loss(checkpoint.get_avg_losses())
+    plot_training_loss(checkpoint.avg_errors())
     plot_weight_distribution(checkpoint.model)
     
     # Cleanup TensorBoard
@@ -277,6 +266,8 @@ def train_xor():
 
 def main():
     train_xor()
+    #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
+    #animate_gradient_distributions(checkpoint)    
 if __name__ == "__main__":
     main()
 
