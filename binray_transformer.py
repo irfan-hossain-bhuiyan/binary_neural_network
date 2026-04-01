@@ -1,3 +1,4 @@
+from _typeshed import Self
 from math import log
 import copy
 import torch
@@ -126,7 +127,7 @@ class MultiLayerLogicGateNet(nn.Module):
         return copy.deepcopy(self)
 
         
-    def regularization(module:MultiLayerLogicGateNet, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
+    def regularization(module:Self, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
@@ -154,7 +155,7 @@ class MultiLayerLogicGateNet(nn.Module):
                     result[f"tau_{i}"] = layer.tau.item()
         return result
     
-    def constraint(module:MultiLayerLogicGateNet):
+    def constraint(module:Self):
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
             layer.weight.clamp_(-20.0, 20.0)
