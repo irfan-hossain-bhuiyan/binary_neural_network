@@ -1,4 +1,3 @@
-from _typeshed import Self
 from math import log
 import copy
 import torch
