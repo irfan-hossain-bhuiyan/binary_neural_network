@@ -69,7 +69,7 @@ class OrGateLayer(nn.Module):
         if not (0.0 <= threshold <= 1.0):
             raise ValueError(f"threshold must be in [0, 1], got {threshold}")
         with torch.no_grad():
-            discrete_w = (self.weight >= threshold).float()
+            discrete_w = torch.where(self.weight<threshold,torch.clamp_min_(self.weight,0),torch.clamp_max_(self.weight,1))#(self.weight >= threshold).float()
             self.weight.copy_(discrete_w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

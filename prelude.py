@@ -747,7 +747,7 @@ class Trainer:
     lr_scheduler_factory:       Optional[Callable[..., Any]]           = None
     device:                     torch.device                           = field(default_factory=resolve_device)
     check_grad:                 bool                                   = False
-    vanishing_grad_check_every: int                                    = 10
+    vanishing_grad_check_every: int                                    = 0
     constraint:                 Optional[Callable[[nn.Module], None]]           = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
 
