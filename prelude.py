@@ -178,6 +178,44 @@ def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
 # The model argument lets you build param-group or layer-wise schedules.
 # The built-in factories do not need it but accept it for API consistency.
 
+class DiscretizeOnPlateau:
+    """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
+    def __init__(self, model: nn.Module, patience: int = 10, min_delta: float = 1e-4):
+        self.model = model
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best = float('inf')
+        self.num_bad_epochs = 0
+        self.epoch = 0
+
+    def step(self, avg_error: float):
+        self.epoch += 1
+        if avg_error < self.best - self.min_delta:
+            self.best = avg_error
+            self.num_bad_epochs = 0
+        else:
+            self.num_bad_epochs += 1
+            
+        if self.num_bad_epochs >= self.patience:
+            CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {self.epoch}): Discretizing model[/bold yellow]")
+            if hasattr(self.model, 'discretize'):
+                self.model.discretize()
+            # Reset the state to "infinite" error to start tracking plateau anew
+            self.best = float('inf')
+            self.num_bad_epochs = 0
+
+def discretize_on_plateau_scheduler(
+    patience:  int   = 10,
+    min_delta: float = 1e-4,
+) -> Callable[[nn.Module, torch.optim.Optimizer], DiscretizeOnPlateau]:
+    """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
+    def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
+        return DiscretizeOnPlateau(
+            model=model, patience=patience, min_delta=min_delta
+        )
+    return factory
+
+
 def plateau_scheduler(
     factor:   float = 0.5,
     patience: int   = 10,

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, animate_gradient_flow, early_stopping,load_checkpoint, plateau_scheduler, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, animate_gradient_flow, discretize_on_plateau_scheduler, early_stopping,load_checkpoint, plateau_scheduler, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -185,7 +185,7 @@ class MultiLayerLogicGateNet(nn.Module):
             return first_layer.tau
         return [cast(OrGateLayer, layer).tau for layer in self.expectation_layers]
 
-    def discretize(self, threshold: float) -> None:
+    def discretize(self, threshold: float=0.5) -> None:
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer, layer)
             layer.discretize(threshold)
@@ -205,13 +205,14 @@ def train_mnist(save_checkpoint: bool = False):
     dataset_path = Path("artifacts/mnist_binary.pt")
     x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
     x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
-
     net = MultiLayerLogicGateNet(
         input_dim=784,
-        layer_dims=(256, 128, 64, 4),
+        layer_dims=(128,64,128,64, 128, 4),
+        only_inverter=True,
         use_softmax=True,
+    #even_initialization=lambda x:nn.init.normal_(x,mean=0),
+    #odd_initialization=lambda x:nn.init.normal_(x,mean=1)
     )
-    
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
         model = nn.DataParallel(net)
@@ -228,7 +229,7 @@ def train_mnist(save_checkpoint: bool = False):
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
         regularization_fn=None,
-        lr_scheduler_factory=plateau_scheduler(),
+        lr_scheduler_factory=discretize_on_plateau_scheduler(),
         constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
@@ -266,7 +267,6 @@ def train_xor(save_checkpoint: bool = False):
     
     # We define a custom preview function that both gives string metrics to Console
     # and logs to TensorBoard for plotting.
-    from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=early_stopping(10, max_epochs=200),
@@ -276,7 +276,7 @@ def train_xor(save_checkpoint: bool = False):
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.25,0.25),"lr":0.1},
         regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
-        lr_scheduler_factory=plateau_scheduler(),
+        lr_scheduler_factory= discretize_on_plateau_scheduler(),
         constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
