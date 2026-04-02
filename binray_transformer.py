@@ -81,7 +81,7 @@ class OrGateLayer(nn.Module):
             s = (p * z).sum(dim=-1)
             
             # Hook on z: scales gradient AFTER passing backward through softmax/sum gate
-            if z.requires_grad:
+            if x.requires_grad:
                 max_p = p.max(dim=-1).values.detach()
                 x.register_hook(lambda grad: grad / (max_p + 1e-4))
                 
