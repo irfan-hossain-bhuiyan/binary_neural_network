@@ -113,8 +113,8 @@ class MultiLayerLogicGateNet(nn.Module):
         max_threshold:float =0.95,
         use_softmax: bool = False,
         only_inverter=True,
-        even_initialization: Callable[..., Any] = nn.init.normal_,
-        odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=1.0),
+        even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
+        odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -164,11 +164,11 @@ class MultiLayerLogicGateNet(nn.Module):
         with torch.no_grad():
             if self.is_shared_tau:
                 first_layer = cast(OrGateLayer, self.expectation_layers[0])
-                result["shared_tau"] = first_layer.tau.item()
+                result["shared_tau"] = first_layer.tau.mean().item() if first_layer.tau.numel() > 1 else first_layer.tau.item()
             else:
                 for i, layer in enumerate(self.expectation_layers):
                     layer = cast(OrGateLayer, layer)
-                    result[f"tau_{i}"] = layer.tau.item()
+                    result[f"tau_{i}"] = layer.tau.mean().item() if layer.tau.numel() > 1 else layer.tau.item()
         return result
     
     def constraint(module:Any):
@@ -200,7 +200,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 x = (1-x)
         return x
 
-def train_mnist():
+def train_mnist(save_checkpoint: bool = False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/mnist_binary.pt")
     x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
@@ -208,23 +208,29 @@ def train_mnist():
 
     net = MultiLayerLogicGateNet(
         input_dim=784,
-        layer_dims=(256, 128, 64,4),
+        layer_dims=(256, 128, 64, 4),
         use_softmax=True,
     )
+    
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
+        model = nn.DataParallel(net)
+    else:
+        model = net
 
     from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=early_stopping(30, max_epochs=100),
         batch_size=128,
-        model=net,
+        model=model,
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
         regularization_fn=None,
         lr_scheduler_factory=plateau_scheduler(),
-        constraint=MultiLayerLogicGateNet.constraint,
-        checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt"),
+        constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
+        checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
         check_grad=True,
         peek=net.peek,
@@ -234,7 +240,7 @@ def train_mnist():
     plot_weight_distribution(checkpoint.model)
     return checkpoint
 
-def train_xor():
+def train_xor(save_checkpoint: bool = False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -251,6 +257,12 @@ def train_xor():
         max_threshold=0.95,
     )
     
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs for XOR!")
+        model = nn.DataParallel(net)
+    else:
+        model = net
+    
     
     # We define a custom preview function that both gives string metrics to Console
     # and logs to TensorBoard for plotting.
@@ -259,14 +271,14 @@ def train_xor():
         dataset=(x_train, y_train),
         stop_on=early_stopping(10, max_epochs=200),
         batch_size=128,
-        model=net,
+        model=model,
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.25,0.25),"lr":0.1},
         regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
         lr_scheduler_factory=plateau_scheduler(),
-        constraint=MultiLayerLogicGateNet.constraint,
-        checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt"),
+        constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
+        checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
         check_grad=True,
         peek=net.peek,
@@ -282,7 +294,7 @@ def train_xor():
 
 
 def main():
-    train_mnist()
+    train_mnist(save_checkpoint=True)
     #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
     #animate_gradient_distributions(checkpoint)    
 if __name__ == "__main__":
