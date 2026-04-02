@@ -248,7 +248,6 @@ def train_xor():
         layer_dims=(256, 128, 64, 32),
         use_softmax=True,
         only_inverter=True,
-        even_initialization=nn.init.normal_,
         max_threshold=0.95,
     )
     
@@ -258,7 +257,7 @@ def train_xor():
     from torch.optim.lr_scheduler import ReduceLROnPlateau
     trainer = Trainer(
         dataset=(x_train, y_train),
-        stop_on=early_stopping(10, max_epochs=60),
+        stop_on=early_stopping(10, max_epochs=200),
         batch_size=128,
         model=net,
         loss_fn=nn.HuberLoss(delta=0.5),
