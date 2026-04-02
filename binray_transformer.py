@@ -39,11 +39,13 @@ class OrGateLayer(nn.Module):
         tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
         initialization: Callable[..., Any] = nn.init.normal_,
+        grad_scalar:bool=False,
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.use_softmax = use_softmax
+        self.grad_scalar=grad_scalar
         # Compute gradient scale based on square root of the input dimension
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
@@ -89,9 +91,10 @@ class OrGateLayer(nn.Module):
             #    z.register_hook(lambda grad, mp=max_p: grad / (mp + 1e-4))
                 
             # Hook on s: scales gradient BEFORE passing backward through the gate
-            if s.requires_grad:
-                 max_p_s = p.max(dim=-1).values.detach()
-                 s.register_hook(lambda grad: grad / (max_p_s + 1e-1))
+            if self.grad_scalar:
+                if s.requires_grad:
+                    max_p_s = p.max(dim=-1).values.detach()
+                    s.register_hook(lambda grad: grad / (max_p_s + 1e-1))
         else:
             s = z.max(dim=-1).values
 
@@ -260,7 +263,7 @@ def train_xor():
         model=net,
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls= Adam,
-        optimizer_kwargs= {"betas":(0.5,0.5),"lr":0.1},
+        optimizer_kwargs= {"betas":(0.25,0.25),"lr":0.1},
         regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
         lr_scheduler_factory=plateau_scheduler(),
         constraint=MultiLayerLogicGateNet.constraint,
