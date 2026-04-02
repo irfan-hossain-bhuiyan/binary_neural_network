@@ -81,16 +81,17 @@ class OrGateLayer(nn.Module):
             s = (p * z).sum(dim=-1)
             
             # Hook on z: scales gradient AFTER passing backward through softmax/sum gate
-            if z.requires_grad:
-                # keepdim=True leaves the last dimension as 1, e.g., shape (batch, out_features, 1).
-                # This automatically broadcasts to match z's shape (batch, out_features, in_features)
-                max_p = p.max(dim=-1, keepdim=True).values.detach()
-                z.register_hook(lambda grad: grad / (max_p + 1e-4))
+            #if z.requires_grad:
+                # keepdim=True leaves the last dimension as 1...
+            #    max_p = p.max(dim=-1, keepdim=True).values.detach()
+                # Use default args lambda grad, mp=max_p to FORCE capture by value 
+                # (prevents lambda from capturing max_p of other layers due to late binding)
+            #    z.register_hook(lambda grad, mp=max_p: grad / (mp + 1e-4))
                 
             # Hook on s: scales gradient BEFORE passing backward through the gate
-            # if s.requires_grad:
-            #     max_p_s = p.max(dim=-1).values.detach()
-            #     s.register_hook(lambda grad: grad / (max_p_s + 1e-8))
+            if s.requires_grad:
+                 max_p_s = p.max(dim=-1).values.detach()
+                 s.register_hook(lambda grad: grad / (max_p_s + 1e-1))
         else:
             s = z.max(dim=-1).values
 
