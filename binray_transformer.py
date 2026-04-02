@@ -228,7 +228,7 @@ def train_mnist(save_checkpoint: bool = False):
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
-        regularization_fn=None,
+        regularization_fn=lambda: model.regularization(0.01,0.01,0.01),
         lr_scheduler_factory=discretize_on_plateau_scheduler(),
         constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,

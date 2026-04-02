@@ -747,7 +747,6 @@ class Trainer:
     lr_scheduler_factory:       Optional[Callable[..., Any]]           = None
     device:                     torch.device                           = field(default_factory=resolve_device)
     check_grad:                 bool                                   = False
-    vanishing_grad_check_every: int                                    = 0
     constraint:                 Optional[Callable[[nn.Module], None]]           = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
 
@@ -809,12 +808,6 @@ class Trainer:
             # ── LR scheduler ───────────────────────────────────────────
             if scheduler is not None:
                 _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error})
-
-            # ── Vanishing gradient detection ───────────────────────────
-            if self.vanishing_grad_check_every > 0 and epoch % self.vanishing_grad_check_every == 0:
-                report = detect_vanishing_gradients(self.model)
-                if report.is_vanishing:
-                    _print_vanishing_warning(report, epoch)
 
             # ── Console logging ────────────────────────────────────────
             peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
