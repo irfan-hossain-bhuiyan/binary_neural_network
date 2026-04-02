@@ -111,12 +111,10 @@ class MultiLayerLogicGateNet(nn.Module):
         layer_dims: list[int] | tuple[int, ...] = (256, 128, 64, 32),
         init_tau_param:nn.Parameter |float = 0.0,
         max_threshold:float =0.95,
-        # Parameter is the tau is shared.
-        # float if all of them are isolated
-        # None for default prefered value
         use_softmax: bool = False,
         only_inverter=True,
-        initialization: Callable[..., Any] = nn.init.normal_,
+        even_initialization: Callable[..., Any] = nn.init.normal_,
+        odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=1.0),
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -125,9 +123,11 @@ class MultiLayerLogicGateNet(nn.Module):
         self.is_shared_tau = isinstance(init_tau_param,nn.Parameter)
         self.only_inverter=only_inverter
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
-
+        if odd_initialization is None:
+            odd_initialization=even_initialization
         in_dim = input_dim *2 # As the first one passes to an inverter.
-        for out_dim in self.layer_dims:
+        for i,out_dim in enumerate(self.layer_dims):
+            initialization=even_initialization if i%2==0 else odd_initialization
             layer = OrGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
@@ -248,7 +248,7 @@ def train_xor():
         layer_dims=(256, 128, 64, 32),
         use_softmax=True,
         only_inverter=True,
-        initialization=nn.init.normal_,
+        even_initialization=nn.init.normal_,
         max_threshold=0.95,
     )
     
