@@ -74,10 +74,21 @@ class OrGateLayer(nn.Module):
         actual_weight = self.actual_weight()
         # z: (batch_size, out_features, in_features)
         z = x.unsqueeze(1) * actual_weight.unsqueeze(0)
+        
         if self.use_softmax:
             z_scaled = self.tau * z
             p = F.softmax(z_scaled, dim=-1)
             s = (p * z).sum(dim=-1)
+            
+            # Hook on z: scales gradient AFTER passing backward through softmax/sum gate
+            if z.requires_grad:
+                max_p = p.max(dim=-1).values.detach()
+                x.register_hook(lambda grad: grad / (max_p + 1e-4))
+                
+            # Hook on s: scales gradient BEFORE passing backward through the gate
+            # if s.requires_grad:
+            #     max_p_s = p.max(dim=-1).values.detach()
+            #     s.register_hook(lambda grad: grad / (max_p_s + 1e-8))
         else:
             s = z.max(dim=-1).values
 
@@ -204,7 +215,7 @@ def train_mnist():
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
-        regularization_fn=lambda: net.regularization(1e-1, 1e-1, 1e-1),
+        regularization_fn=None,
         lr_scheduler_factory=plateau_scheduler(),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt"),
