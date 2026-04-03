@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, random
 from torch.optim import Adam
 from rich.console import Console
 from rich.table import Table
@@ -743,7 +743,7 @@ class Trainer:
     batch_size:                 int
     loss_fn:                    nn.modules.loss._Loss                  = field(default_factory=nn.MSELoss)
     error_fn:                   nn.modules.loss._Loss                  = field(default_factory=nn.L1Loss)
-    regularization_fn:          Optional[Callable[[], Tensor]]         = None
+    regularization_fn:          Optional[Callable[[nn.Module], Tensor]]         = None
     checkpoint_path:            Optional[Path]                         = None
     optimizer_kwargs:           Dict[str, Any]                         = field(default_factory=dict)
     optimizer_cls:              Type[torch.optim.Optimizer]            = Adam
@@ -785,7 +785,7 @@ class Trainer:
 
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(xb)
-                reg    = self.regularization_fn() if self.regularization_fn is not None else torch.tensor(0.0)
+                reg    = self.regularization_fn(self.model) if self.regularization_fn is not None else torch.tensor(0.0)
                 loss   = self.loss_fn(logits, yb) + reg
                 loss.backward()
 

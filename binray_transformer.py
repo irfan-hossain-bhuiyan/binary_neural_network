@@ -1,5 +1,6 @@
 from math import log
 import copy
+from numpy import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -161,7 +162,7 @@ class MultiLayerLogicGateNet(nn.Module):
             tau_err = torch.exp(-layer.tau)
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
             # Encourage tau to grow larger (L1 regularization, negative sign)
-        return reg
+        return reg*random.rand()
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer,layer)
@@ -236,7 +237,7 @@ def train_mnist(save_checkpoint: bool = False):
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
-        regularization_fn=lambda: model.regularization(0.01,0.01,0.01),
+        regularization_fn=lambda x: MultiLayerLogicGateNet.regularization(x,0.01,0.01,0.01),
         lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,
