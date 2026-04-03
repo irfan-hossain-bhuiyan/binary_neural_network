@@ -12,11 +12,6 @@ from prelude import DEVICE, animate_gradient_flow, fn_call_on_plateau_scheduler,
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
-def pass_invert(x: torch.Tensor) -> torch.Tensor:
-    """Concatenate inputs with their inverted values (1 - x)."""
-    inverted = 1.0 - x
-    return torch.cat([x, inverted], dim=-1)
-
 def xor(a:Tensor,b:Tensor)->torch.Tensor:
     return a+b-2*a*b
 class OrGateLayer(nn.Module):
@@ -237,13 +232,8 @@ class MultiLayerLogicGateNet(nn.Module):
             layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = pass_invert(x)
         for idx, layer in enumerate(self.expectation_layers):
             x = layer(x)
-            if idx < len(self.expectation_layers) - 1:
-                x = (1-x) if self.only_inverter else pass_invert(x)
-            else:
-                x = (1-x)
         return x
 
 def train_mnist(save_checkpoint: bool = False):
@@ -254,7 +244,6 @@ def train_mnist(save_checkpoint: bool = False):
     net = MultiLayerLogicGateNet(
         input_dim=784,
         layer_dims=(128,64,128,64, 128, 4),
-        only_inverter=True,
         use_softmax=True,
     #even_initialization=lambda x:nn.init.normal_(x,mean=0),
     #odd_initialization=lambda x:nn.init.normal_(x,mean=1)
@@ -300,7 +289,6 @@ def train_xor(save_checkpoint: bool = False):
         input_dim=64,
         layer_dims=(256, 128, 64, 32),
         use_softmax=True,
-        only_inverter=True,
         max_threshold=0.95,
     )
     
