@@ -142,7 +142,6 @@ class MultiLayerLogicGateNet(nn.Module):
         init_tau_param:nn.Parameter |float = 0.0,
         max_threshold:float =0.95,
         use_softmax: bool = False,
-        only_inverter=True,
         even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
         odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
     ):
@@ -151,11 +150,10 @@ class MultiLayerLogicGateNet(nn.Module):
         self.layer_dims = list(layer_dims)
         self.use_softmax = use_softmax
         self.is_shared_tau = isinstance(init_tau_param,nn.Parameter)
-        self.only_inverter=only_inverter
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
         if odd_initialization is None:
             odd_initialization=even_initialization
-        in_dim = input_dim *2 # As the first one passes to an inverter.
+        in_dim = input_dim # As the first one passes to an inverter.
         for i,out_dim in enumerate(self.layer_dims):
             initialization=even_initialization if i%2==0 else odd_initialization
             layer = OrGateLayer(
@@ -167,13 +165,13 @@ class MultiLayerLogicGateNet(nn.Module):
                 initialization=initialization,
             )
             self.expectation_layers.append(layer)
-            in_dim = out_dim * (1 if only_inverter else 2) # inverter doubles the features
+            in_dim = out_dim
  
     def clone(self):
         return copy.deepcopy(self)
 
         
-    def regularization(module:Any, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,disc_poly:bool=True):
+    def regularization(module:Any, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
@@ -181,13 +179,25 @@ class MultiLayerLogicGateNet(nn.Module):
             b = layer.bias
             
             l1_error = w.relu().mean() + b.relu().mean()
-            disc_error_w = (w*(1-w)).relu().mean() if disc_poly else (0.5-(w-0.5).abs()).relu().mean()
-            disc_error_b = (b*(1-b)).relu().mean() if disc_poly else (0.5-(b-0.5).abs()).relu().mean()
-            disc_error = (disc_error_w + disc_error_b) / 2
+            disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
+            disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
+            disc_error = (disc_error_w + disc_error_b)
             
             tau_err = torch.exp(-layer.tau)
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
             # Encourage tau to grow larger (L1 regularization, negative sign)
+        return reg*random.rand()
+    def regularization_2(module:Any,disc_lambda=1e-1,tau_lambda=1e-1):
+        reg = torch.tensor(0.0, device=DEVICE)
+        for layer in module.expectation_layers:
+            layer = cast(OrGateLayer, layer)
+            w = layer.weight
+            b = layer.bias
+            disc_error_w = (0.5-(w-0.5).abs()).abs().mean()
+            disc_error_b = (0.5-(b-0.5).abs()).abs().mean()
+            disc_error=disc_error_w+disc_error_b
+            tau_err = torch.exp(-layer.tau)
+            reg+=disc_lambda*disc_error+tau_lambda*tau_err
         return reg*random.rand()
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
