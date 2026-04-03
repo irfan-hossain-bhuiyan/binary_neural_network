@@ -189,10 +189,10 @@ class DiscretizeOnPlateau:
         self.num_bad_epochs = 0
         self.epoch = 0
 
-    def step(self, avg_error: float):
+    def step(self, avg_loss: float):
         self.epoch += 1
-        if avg_error < self.best - self.min_delta:
-            self.best = avg_error
+        if avg_loss < self.best - self.min_delta:
+            self.best = avg_loss
             self.num_bad_epochs = 0
         else:
             self.num_bad_epochs += 1
@@ -200,9 +200,11 @@ class DiscretizeOnPlateau:
         if self.num_bad_epochs >= self.patience:
             CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {self.epoch}): Discretizing model[/bold yellow]")
             if hasattr(self.model, 'discretize'):
+                self.optimizer.state.clear()
                 self.model.discretize()
+            else:
+                raise Exception("should have funciton discretize")
             # Reset the optimizer state since the model has changed
-            self.optimizer.state.clear()
             # Reset the state to "infinite" error to start tracking plateau anew
             self.best = float('inf')
             self.num_bad_epochs = 0
@@ -750,7 +752,7 @@ class Trainer:
     lr_scheduler_factory:       Optional[Callable[..., Any]]           = None
     device:                     torch.device                           = field(default_factory=resolve_device)
     check_grad:                 bool                                   = False
-    constraint:                 Optional[Callable[[nn.Module], None]]           = None
+    constraint:                 Optional[Callable[[nn.Module], None]]  = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
 
     # ------------------------------------------------------------------
@@ -808,10 +810,6 @@ class Trainer:
             avg_reg   = epoch_reg   / num_batches
             avg_stats = _divide_grad_stats(acc_stats, num_batches)
 
-            # ── LR scheduler ───────────────────────────────────────────
-            if scheduler is not None:
-                _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error})
-
             # ── Console logging ────────────────────────────────────────
             peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
             CONSOLE.print(
@@ -824,6 +822,11 @@ class Trainer:
 
             if self.check_grad:
                 _print_grad_table(avg_stats)
+            
+            # ── LR scheduler ───────────────────────────────────────────
+            if scheduler is not None:
+                _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error,"avg_loss":avg_loss})
+
 
             # ── History ────────────────────────────────────────────────
             history.append(HistoryEntry(

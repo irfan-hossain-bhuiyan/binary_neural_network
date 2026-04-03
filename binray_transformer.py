@@ -151,13 +151,13 @@ class MultiLayerLogicGateNet(nn.Module):
         return copy.deepcopy(self)
 
         
-    def regularization(module:Any, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
+    def regularization(module:Any, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,disc_poly:bool=True):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
             w = layer.weight
             l1_error = w.relu().mean()
-            disc_error = (0.5-(w-0.5).abs()).relu().mean()
+            disc_error = (w*(1-w)).relu().mean() if disc_poly else (0.5-(w-0.5).abs()).relu().mean()
             tau_err = torch.exp(-layer.tau)
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
             # Encourage tau to grow larger (L1 regularization, negative sign)
