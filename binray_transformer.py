@@ -2,6 +2,7 @@ from math import log
 import copy
 from numpy import random
 import torch
+from torch._prims_common import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
@@ -16,6 +17,8 @@ def pass_invert(x: torch.Tensor) -> torch.Tensor:
     inverted = 1.0 - x
     return torch.cat([x, inverted], dim=-1)
 
+def xor(a:Tensor,b:Tensor)->torch.Tensor:
+    return a+b-2*a*b
 class OrGateLayer(nn.Module):
     """Expectation layer that can operate in soft (softmax) or hard (argmax) mode.
 
@@ -50,6 +53,7 @@ class OrGateLayer(nn.Module):
         # Compute gradient scale based on square root of the input dimension
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.ones(out_features, in_features))
         initialization(self.weight)
         if isinstance(tau,nn.Parameter):
             self.tau_adder=tau
@@ -66,6 +70,9 @@ class OrGateLayer(nn.Module):
     def actual_weight(self) -> torch.Tensor:
         return cast(torch.Tensor, leaky_clamp(self.weight, 0, 1, 0.1))
 
+    def actual_bias(self) -> torch.Tensor:
+        return cast(torch.Tensor, leaky_clamp(self.bias, 0, 1, 0.1))
+
     def discretize(self, threshold: float) -> None:
         if not (0.0 <= threshold <= 1.0):
             raise ValueError(f"threshold must be in [0, 1], got {threshold}")
@@ -80,11 +87,25 @@ class OrGateLayer(nn.Module):
                 torch.clamp_min(self.weight, 1)
             )
             self.weight.copy_(discrete_w)
+            
+            discrete_b = torch.where(
+                self.bias < threshold,
+                torch.clamp_max(self.bias, 0),
+                torch.clamp_min(self.bias, 1)
+            )
+            self.bias.copy_(discrete_b)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         actual_weight = self.actual_weight()
+        actual_bias = self.actual_bias()
+        # Input tensor expanded for operations
+        x_exp = x.unsqueeze(1)
+        b_exp = actual_bias.unsqueeze(0)
+        # Continuous XOR: x * (1 - b) + b * (1 - x) = x + b - 2*x*b
+        x_xor_b = x_exp + b_exp - 2.0 * x_exp * b_exp
+        
         # z: (batch_size, out_features, in_features)
-        z = x.unsqueeze(1) * actual_weight.unsqueeze(0)
+        z = x_xor_b * actual_weight.unsqueeze(0)
         
         if self.use_softmax:
             z_scaled = self.tau * z
@@ -157,8 +178,13 @@ class MultiLayerLogicGateNet(nn.Module):
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
             w = layer.weight
-            l1_error = w.relu().mean()
-            disc_error = (w*(1-w)).relu().mean() if disc_poly else (0.5-(w-0.5).abs()).relu().mean()
+            b = layer.bias
+            
+            l1_error = w.relu().mean() + b.relu().mean()
+            disc_error_w = (w*(1-w)).relu().mean() if disc_poly else (0.5-(w-0.5).abs()).relu().mean()
+            disc_error_b = (b*(1-b)).relu().mean() if disc_poly else (0.5-(b-0.5).abs()).relu().mean()
+            disc_error = (disc_error_w + disc_error_b) / 2
+            
             tau_err = torch.exp(-layer.tau)
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
             # Encourage tau to grow larger (L1 regularization, negative sign)
@@ -183,7 +209,8 @@ class MultiLayerLogicGateNet(nn.Module):
     def constraint(module:Any):
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
-            layer.weight.clamp_(-20.0, 20.0)
+            layer.weight.clamp_(-10.0, 10.0)
+            layer.bias.clamp_(-10.0, 10.0)
             layer.tau_costraint(20)
 
 

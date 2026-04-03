@@ -1,0 +1,4 @@
+- Smooth gradient don't work,It is proven
+- L1Loss don't work.It is proven
+- gradient decay don't happen much
+- 
