@@ -178,9 +178,9 @@ def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
 # The model argument lets you build param-group or layer-wise schedules.
 # The built-in factories do not need it but accept it for API consistency.
 
-class DiscretizeOnPlateau:
+class FnCallOnPlateau:
     """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
-    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer, patience: int = 10, min_delta: float = 1e-4):
+    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer,func:Callable[[nn.Module]] ,patience: int = 10, min_delta: float = 1e-4):
         self.model = model
         self.optimizer = optimizer
         self.patience = patience
@@ -188,6 +188,7 @@ class DiscretizeOnPlateau:
         self.best = float('inf')
         self.num_bad_epochs = 0
         self.epoch = 0
+        self.func=func
 
     def step(self, avg_loss: float):
         self.epoch += 1
@@ -199,24 +200,21 @@ class DiscretizeOnPlateau:
             
         if self.num_bad_epochs >= self.patience:
             CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {self.epoch}): Discretizing model[/bold yellow]")
-            if hasattr(self.model, 'discretize'):
-                self.optimizer.state.clear()
-                self.model.discretize()
-            else:
-                raise Exception("should have funciton discretize")
+            self.func(self.model)
             # Reset the optimizer state since the model has changed
             # Reset the state to "infinite" error to start tracking plateau anew
             self.best = float('inf')
             self.num_bad_epochs = 0
 
-def discretize_on_plateau_scheduler(
+def fn_call_on_plateau_scheduler(
+    fn:Callable[[nn.Module]],
     patience:  int   = 10,
     min_delta: float = 1e-4,
-) -> Callable[[nn.Module, torch.optim.Optimizer], DiscretizeOnPlateau]:
+) -> Callable[[nn.Module, torch.optim.Optimizer], FnCallOnPlateau]:
     """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
     def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
-        return DiscretizeOnPlateau(
-            model=model, optimizer=optimizer, patience=patience, min_delta=min_delta
+        return FnCallOnPlateau(
+            model=model, optimizer=optimizer,func=fn,patience=patience, min_delta=min_delta
         )
     return factory
 
