@@ -5,3 +5,7 @@
 So I am thinking Do I need to regulate from both side,
 I feel like it.
 Because we have seen having w.relu() error yield better result
+
+- I removed DecreaseLROnPlateu in scheduler,SO I think i need to bring it back,I am not sure how improve it make it.
+- Increased cost in regularization always make the model better in avg.
+- Always use lower learning rate,Default ADAm settings is giving better result than scaled one

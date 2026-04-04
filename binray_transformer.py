@@ -181,7 +181,7 @@ class MultiLayerLogicGateNet(nn.Module):
             tau_err = torch.exp(-layer.tau)
             reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
             # Encourage tau to grow larger (L1 regularization, negative sign)
-        return reg*random.rand()
+        return reg
     def regularization_2(module:Any,disc_lambda=1e-1,tau_lambda=1e-1):
         reg = torch.tensor(0.0, device=DEVICE)
         for layer in module.expectation_layers:
