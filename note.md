@@ -9,3 +9,5 @@ Because we have seen having w.relu() error yield better result
 - I removed DecreaseLROnPlateu in scheduler,SO I think i need to bring it back,I am not sure how improve it make it.
 - Increased cost in regularization always make the model better in avg.
 - Always use lower learning rate,Default ADAm settings is giving better result than scaled one
+- Lower reg is always bad on avg,Not sure why
+- Will try increasing as much as possible to see the effect.
