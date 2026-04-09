@@ -79,9 +79,9 @@ class LayerGradStats:
     max_abs         — largest individual gradient magnitude; catches sparse
                       exploding gradients that mean_abs would average away.
     """
-    mean_abs:        float
-    norm_normalized: float
-    max_abs:         float
+    mean_abs:        Tensor
+    norm_normalized: Tensor
+    max_abs:         Tensor
 
 
 @dataclass
@@ -138,34 +138,71 @@ class Checkpoint:
 # STOPPING CONDITIONS
 # ══════════════════════════════════════════════
 
+@dataclass
+class TrainerState:
+    """Consolidated state tracking for training, including plateau detection."""
+    epoch: int = 0
+    avg_loss: float = float("inf")
+    avg_error: float = float("inf")
+    avg_regularization: float = 0.0
+
+    # Plateau tracking properties
+    best_loss: float = float("inf")
+    best_error: float = float("inf")
+    loss_no_improve: int = 0
+    error_no_improve: int = 0
+    
+    # Thresholds for plateau
+    loss_min_delta: float = 1e-4
+    error_min_delta: float = 1e-3
+
+    def update(self, epoch: int, avg_loss: float, avg_error: float, avg_regularization: float):
+        self.epoch = epoch
+        self.avg_loss = avg_loss
+        self.avg_error = avg_error
+        self.avg_regularization = avg_regularization
+        
+        # Track loss plateau
+        if avg_loss < self.best_loss - self.loss_min_delta:
+            self.best_loss = avg_loss
+            self.loss_no_improve = 0
+        else:
+            self.loss_no_improve += 1
+            
+        # Track error plateau
+        if avg_error < self.best_error - self.error_min_delta:
+            self.best_error = avg_error
+            self.error_no_improve = 0
+        else:
+            self.error_no_improve += 1
+
+    def reset_plateau(self):
+        self.best_loss = float("inf")
+        self.loss_no_improve = 0
+        self.best_error = float("inf")
+        self.error_no_improve = 0
+
+
 def early_stopping(
     patience:   int,
-    min_delta:  float = 1e-3,
     max_epochs: int   = 500,
-) -> Callable[[dict], bool]:
+) -> Callable[..., bool]:
     """
     Factory: plateau-based stopping.
 
-    Stops when avg_error has not improved by at least min_delta for
+    Stops when avg_error has not improved by at least state.error_min_delta for
     patience consecutive epochs, or when max_epochs is reached.
     """
-    state = {"best": float("inf"), "no_improve": 0}
-
-    def callback(metrics: dict) -> bool:
-        if metrics["avg_error"] < state["best"] - min_delta:
-            state["best"]       = metrics["avg_error"]
-            state["no_improve"] = 0
-        else:
-            state["no_improve"] += 1
-        return state["no_improve"] >= patience or metrics["epoch"] >= max_epochs
+    def callback(epoch: int, state: "TrainerState") -> bool:
+        return state.error_no_improve >= patience or epoch >= max_epochs
 
     return callback
 
 
-def stop_on_epoch(max_epochs: int) -> Callable[[dict], bool]:
+def stop_on_epoch(max_epochs: int) -> Callable[..., bool]:
     """Factory: stops exactly after max_epochs epochs."""
-    def callback(metrics: dict) -> bool:
-        return metrics["epoch"] >= max_epochs
+    def callback(epoch: int) -> bool:
+        return epoch >= max_epochs
     return callback
 
 
@@ -184,27 +221,17 @@ class FnCallOnPlateau:
         self.model = model
         self.optimizer = optimizer
         self.patience = patience
-        self.min_delta = min_delta
-        self.best = float('inf')
-        self.num_bad_epochs = 0
-        self.epoch = 0
         self.func=func
 
-    def step(self, avg_loss: float):
-        self.epoch += 1
-        if avg_loss < self.best - self.min_delta:
-            self.best = avg_loss
-            self.num_bad_epochs = 0
-        else:
-            self.num_bad_epochs += 1
-            
-        if self.num_bad_epochs >= self.patience:
-            CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {self.epoch}): Discretizing model[/bold yellow]")
+    def step(self, state: "TrainerState"):
+        if state.loss_no_improve >= self.patience:
+            CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {state.epoch}): Discretizing model[/bold yellow]")
             self.func(self.model)
             # Reset the optimizer state since the model has changed
+            from collections import defaultdict
+            self.optimizer.state = defaultdict(dict)
             # Reset the state to "infinite" error to start tracking plateau anew
-            self.best = float('inf')
-            self.num_bad_epochs = 0
+            state.reset_plateau()
 
 def fn_call_on_plateau_scheduler(
     fn:Callable[[nn.Module]],
@@ -291,9 +318,9 @@ def collect_grad_stats(model: nn.Module) -> Dict[str, LayerGradStats]:
         g = param.grad.detach()
         n = g.numel()
         stats[name] = LayerGradStats(
-            mean_abs        = g.abs().mean().item(),
-            norm_normalized = g.norm().item() / (n ** 0.5),
-            max_abs         = g.abs().max().item(),
+            mean_abs        = g.abs().mean(),
+            norm_normalized = g.norm() / (n ** 0.5),
+            max_abs         = g.abs().max(),
         )
     return stats
 
@@ -353,7 +380,7 @@ def _print_grad_table(avg_stats: Dict[str, LayerGradStats]) -> None:
         table.add_row("(no gradients)", "-", "-", "-")
     else:
         for name, s in sorted(avg_stats.items()):
-            table.add_row(name, f"{s.mean_abs:.4e}", f"{s.norm_normalized:.4e}", f"{s.max_abs:.4e}")
+            table.add_row(name, f"{s.mean_abs.item():.4e}", f"{s.norm_normalized.item():.4e}", f"{s.max_abs.item():.4e}")
     CONSOLE.print(table)
 
 
@@ -487,13 +514,13 @@ def plot_gradient_flow(checkpoint: Checkpoint) -> None:
 
     fig, ax = plt.subplots(figsize=(max(8, len(param_names) * 1.2), 4))
     for entry in entries:
-        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        means = [entry.grad_stats.get(n, LayerGradStats(torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0))).mean_abs.item() for n in param_names]
         ax.plot(param_names, means, alpha=0.3, linewidth=1, color="steelblue")
 
     # Highlight first and last epoch prominently.
     for idx, label in [(0, "first epoch"), (-1, "last epoch")]:
         entry = entries[idx]
-        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        means = [entry.grad_stats.get(n, LayerGradStats(torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0))).mean_abs.item() for n in param_names]
         ax.plot(param_names, means, linewidth=2.5, label=f"Epoch {entry.epoch} ({label})")
 
     ax.set_yscale("log")
@@ -580,7 +607,7 @@ def animate_gradient_flow(checkpoint: Checkpoint) -> None:
     def animate(epoch_idx: int):
         ax.clear()
         entry = entries[epoch_idx]
-        means = [entry.grad_stats.get(n, LayerGradStats(0, 0, 0)).mean_abs for n in param_names]
+        means = [entry.grad_stats.get(n, LayerGradStats(torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0))).mean_abs.item() for n in param_names]
         ax.bar(param_names, means, color="orange", edgecolor="black")
         ax.set_yscale("log")
         ax.set_ylabel("Mean |gradient|")
@@ -678,9 +705,9 @@ def _accumulate_grad_stats(
 def _divide_grad_stats(acc: Dict[str, LayerGradStats], n: int) -> Dict[str, LayerGradStats]:
     return {
         name: LayerGradStats(
-            mean_abs        = s.mean_abs        / n,
-            norm_normalized = s.norm_normalized / n,
-            max_abs         = s.max_abs         / n,
+            mean_abs        = (s.mean_abs        / n).detach().cpu(),
+            norm_normalized = (s.norm_normalized / n).detach().cpu(),
+            max_abs         = (s.max_abs         / n).detach().cpu(),
         )
         for name, s in acc.items()
     }
@@ -689,7 +716,7 @@ def _divide_grad_stats(acc: Dict[str, LayerGradStats], n: int) -> Dict[str, Laye
 # ══════════════════════════════════════════════
 # TRAINER
 # ══════════════════════════════════════════════
-
+from dataclasses import field
 @dataclass
 class Trainer:
     """
@@ -743,7 +770,7 @@ class Trainer:
     batch_size:                 int
     loss_fn:                    nn.modules.loss._Loss                  = field(default_factory=nn.MSELoss)
     error_fn:                   nn.modules.loss._Loss                  = field(default_factory=nn.L1Loss)
-    regularization_fn:          Optional[Callable[[nn.Module], Tensor]]         = None
+    regularization_fn:          Optional[Callable[[nn.Module], Tensor]]= None
     checkpoint_path:            Optional[Path]                         = None
     optimizer_kwargs:           Dict[str, Any]                         = field(default_factory=dict)
     optimizer_cls:              Type[torch.optim.Optimizer]            = Adam
@@ -752,6 +779,7 @@ class Trainer:
     check_grad:                 bool                                   = False
     constraint:                 Optional[Callable[[nn.Module], None]]  = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
+    state:                      Any                                    = field(default_factory=TrainerState)
 
     # ------------------------------------------------------------------
     def train(self) -> Checkpoint:
@@ -785,19 +813,29 @@ class Trainer:
 
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(xb)
-                reg    = self.regularization_fn(self.model) if self.regularization_fn is not None else torch.tensor(0.0)
+                
+                if self.regularization_fn is not None:
+                    reg = _call_matching(self.regularization_fn, {"module": self.model, "model": self.model, "state": self.state})
+                else:
+                    reg = torch.tensor(0.0)
+                
                 loss   = self.loss_fn(logits, yb) + reg
                 loss.backward()
 
                 # Collect stats right after backward, before step.
-                acc_stats = _accumulate_grad_stats(acc_stats, collect_grad_stats(self.model))
+                if self.check_grad:
+                    acc_stats = _accumulate_grad_stats(acc_stats, collect_grad_stats(self.model))
 
                 optimizer.step()
 
                 with torch.no_grad():
                     epoch_error += self.error_fn(logits, yb).item()
                     if self.constraint is not None:
-                        self.constraint(self.model)
+                        _call_matching(self.constraint, {"module": self.model, "model": self.model, "state": self.state})
+                    
+                    underlying_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+                    if hasattr(underlying_model, "apply_constraints"):
+                        _call_matching(underlying_model.apply_constraints, {"module": underlying_model, "model": underlying_model, "state": self.state})
                 epoch_loss += loss.item()
                 epoch_reg  += reg.item()
                 num_batches += 1
@@ -806,7 +844,10 @@ class Trainer:
             avg_loss  = epoch_loss  / num_batches
             avg_error = epoch_error / num_batches
             avg_reg   = epoch_reg   / num_batches
-            avg_stats = _divide_grad_stats(acc_stats, num_batches)
+            avg_stats = _divide_grad_stats(acc_stats, num_batches) if self.check_grad else {}
+            
+            if hasattr(self.state, "update"):
+                self.state.update(epoch, avg_loss, avg_error, avg_reg)
 
             # ── Console logging ────────────────────────────────────────
             peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
@@ -823,7 +864,7 @@ class Trainer:
             
             # ── LR scheduler ───────────────────────────────────────────
             if scheduler is not None:
-                _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error,"avg_loss":avg_loss})
+                _call_matching(scheduler.step, {"metrics": avg_error, "avg_error": avg_error,"avg_loss":avg_loss, "state": self.state})
 
 
             # ── History ────────────────────────────────────────────────
@@ -843,8 +884,9 @@ class Trainer:
                 "avg_regularization": avg_reg,
                 "history":            history,
                 "model":              self.model,
+                "state":              self.state,
             }
-            if self.stop_on(stop_metrics):
+            if _call_matching(self.stop_on, stop_metrics):
                 CONSOLE.print(f"[bold red]Stopping at epoch {epoch}.[/bold red]")
                 break
 

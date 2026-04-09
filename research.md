@@ -13,3 +13,18 @@ in catastrophic learning loss.
 - Deep Differentiable Logic Gate Networks(2022)
 - Light Differentiable Logic Gate Networks" (Yousefi et al., 2025)
 - Binary Neural Network
+
+## Methodology
+Nor gate is enough to make any logical circuit,
+Every neuron is is basically depends on the neuron of previous layer
+$$\or (w_i \cap x_i)\xor b$$ where wi and b is the learnable parameter of the model,$w_i$ and $b_i$ is constraint to 0 or 1.
+Like neural network given enough depth and width we can mimic any logical relation.
+
+We will map the gate in a continious domain
+$x_i \and w_i=x_i*w_i$ and or gate will be softmax(z*tau)*z to get the expected max,$tau=1/temprature$ and tau is encouraged to grow.
+and b is beta make if the or gate should passed with not gate.
+## Training 1
+I will start with training xor gate.So 16 bit +16 bit=32 bit input,The setup is 
+1. 100000 sample
+2. Layers =(256, 128, 64, 32)
+3. 

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, animate_gradient_flow, fn_call_on_plateau_scheduler, early_stopping,load_checkpoint, plateau_scheduler, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, TrainerState, animate_gradient_flow, fn_call_on_plateau_scheduler, early_stopping,load_checkpoint, plateau_scheduler, save_checkpoint, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -165,35 +165,37 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-        
-    def regularization(module:Any, l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1):
-        reg = torch.tensor(0.0, device=DEVICE)
-        for layer in module.expectation_layers:
-            layer = cast(OrGateLayer, layer)
-            w = layer.weight
-            b = layer.bias
-            
-            l1_error = w.relu().mean() + b.relu().mean()
-            disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
-            disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
-            disc_error = (disc_error_w + disc_error_b)
-            
-            tau_err = torch.exp(-layer.tau)
-            reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
-            # Encourage tau to grow larger (L1 regularization, negative sign)
-        return reg
-    def regularization_2(module:Any,disc_lambda=1e-1,tau_lambda=1e-1):
-        reg = torch.tensor(0.0, device=DEVICE)
-        for layer in module.expectation_layers:
-            layer = cast(OrGateLayer, layer)
-            w = layer.weight
-            b = layer.bias
-            disc_error_w = (0.5-(w-0.5).abs()).abs().mean()
-            disc_error_b = (0.5-(b-0.5).abs()).abs().mean()
-            disc_error=disc_error_w+disc_error_b
-            tau_err = torch.exp(-layer.tau)
-            reg+=disc_lambda*disc_error+tau_lambda*tau_err
-        return reg*random.rand()
+    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):    
+        def regularization(module:"MultiLayerLogicGateNet"):
+            reg = torch.tensor(0.0, device=DEVICE)
+            for layer in module.expectation_layers:
+                layer = cast(OrGateLayer, layer)
+                w = layer.weight
+                b = layer.bias
+                
+                l1_error = w.relu().mean() + b.relu().mean()
+                disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
+                disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
+                disc_error = (disc_error_w + disc_error_b)
+                
+                tau_err = torch.exp(-layer.tau)
+                reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
+                # Encourage tau to grow larger (L1 regularization, negative sign)
+            return reg
+        def close_to_discrete(module:Any):
+            reg = torch.tensor(0.0, device=DEVICE)
+            for layer in module.expectation_layers:
+                layer = cast(OrGateLayer, layer)
+                w = layer.weight
+                b = layer.bias
+                disc_error_w = (0.5-(w-0.5).abs()).abs().mean()
+                disc_error_b = (0.5-(b-0.5).abs()).abs().mean()
+                disc_error=disc_error_w+disc_error_b
+                tau_err = torch.exp(-layer.tau)
+                reg+=disc_lambda*disc_error+tau_lambda*tau_err
+            return reg*random.rand()
+        if default:return regularization
+        else:return close_to_discrete
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
             layer = cast(OrGateLayer,layer)
@@ -210,7 +212,7 @@ class MultiLayerLogicGateNet(nn.Module):
                     layer = cast(OrGateLayer, layer)
                     result[f"tau_{i}"] = layer.tau.mean().item() if layer.tau.numel() > 1 else layer.tau.item()
         return result
-    
+
     def constraint(module:Any):
         for layer in module.expectation_layers:
             layer = cast(OrGateLayer, layer)
@@ -263,12 +265,13 @@ def train_mnist(save_checkpoint: bool = False):
         loss_fn=nn.HuberLoss(delta=0.5),
         optimizer_cls=Adam,
         optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
-        regularization_fn=lambda x: MultiLayerLogicGateNet.regularization(x,0.01,0.01,0.01),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.01,0.01,0.01),
         lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
-        constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
+        constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
         check_grad=True,
+        state=TrainerState(),
         peek=net.peek,
     )
     checkpoint = trainer.train()
@@ -306,12 +309,12 @@ def train_xor(save_checkpoint: bool = False):
         stop_on=early_stopping(10, max_epochs=200),
         batch_size=128,
         model=model,
-        loss_fn=nn.HuberLoss(delta=0.5),
+        loss_fn=nn.MSELoss(),
         optimizer_cls= Adam,
         optimizer_kwargs= {"betas":(0.25,0.25),"lr":0.1},
-        regularization_fn=lambda :net.regularization(1e-1,1e-1,1e-1),
-        lr_scheduler_factory= fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
-        constraint=lambda m: MultiLayerLogicGateNet.constraint(m.module if isinstance(m, nn.DataParallel) else m),
+        regularization_fn= None,
+        lr_scheduler_factory= None,
+        constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt") if save_checkpoint else None,
         device=device,
         check_grad=True,
@@ -328,9 +331,10 @@ def train_xor(save_checkpoint: bool = False):
 
 
 def main():
-    train_mnist(save_checkpoint=True)
+    #train_mnist(save_checkpoint=True)
     #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
-    #animate_gradient_distributions(checkpoint)    
+    #animate_gradient_distributions(checkpoint)
+    train_xor()
 if __name__ == "__main__":
     main()
 
