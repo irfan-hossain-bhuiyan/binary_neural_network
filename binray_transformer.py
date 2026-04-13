@@ -305,7 +305,7 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
             optimizer_cls=Adam,
             optimizer_kwargs={"lr":0.1},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
-            lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
+            lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
             checkpoint_path=None, # Don't overwrite for each run
             device=device,
