@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, TrainerState,  fn_call_on_plateau_scheduler, early_stopping, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, TrainerState,  fn_call_on_plateau_scheduler, early_stopping, leaky_clamp, plot_training_loss, Trainer, save_checkpoint, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -254,6 +254,22 @@ def train_mnist(save_checkpoint: bool = False):
         use_softmax=True,
     )
     
+    
+def train_xor(save_checkpoint: bool = False):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dataset_path = Path("artifacts/xor_dataset.pt")
+    if not dataset_path.exists():
+        save_xor_dataset(dataset_path, num_samples=100000)
+
+    x_all, y_all = load_xor_dataset(dataset_path, device=device)
+    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
+
+    base_net = MultiLayerLogicGateNet(
+        input_dim=64,
+        layer_dims=(256, 128, 64, 32),
+        use_softmax=True,
+        max_threshold=0.95,
+    )
     from prelude import stop_on_epoch
     import matplotlib.pyplot as plt
     
@@ -273,9 +289,9 @@ def train_mnist(save_checkpoint: bool = False):
         trainer = Trainer(
             dataset=(x_train, y_train),
             stop_on=stop_on_epoch(50),
-            batch_size=128,
+            batch_size=256,
             model=model,
-            loss_fn=nn.HuberLoss(delta=0.5),
+            loss_fn=nn.MSELoss(),
             optimizer_cls=Adam,
             optimizer_kwargs={},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
@@ -306,63 +322,11 @@ def train_mnist(save_checkpoint: bool = False):
 
     return checkpoints
 
-def train_xor(save_checkpoint: bool = False):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset_path = Path("artifacts/xor_dataset.pt")
-    if not dataset_path.exists():
-        save_xor_dataset(dataset_path, num_samples=100000)
-
-    x_all, y_all = load_xor_dataset(dataset_path, device=device)
-    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
-
-    net = MultiLayerLogicGateNet(
-        input_dim=64,
-        layer_dims=(256, 128, 64, 32),
-        use_softmax=True,
-        max_threshold=0.95,
-    )
-    
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs for XOR!")
-        model = nn.DataParallel(net)
-    else:
-        model = net
-    
-    
-    # We define a custom preview function that both gives string metrics to Console
-    # and logs to TensorBoard for plotting.
-    trainer = Trainer(
-        dataset=(x_train, y_train),
-        stop_on=early_stopping(max_epochs=200),
-        batch_size=128,
-        model=model,
-        loss_fn=nn.MSELoss(),
-        optimizer_cls= Adam,
-        optimizer_kwargs= {"betas":(0.25,0.25),"lr":0.1},
-        regularization_fn= None,
-        lr_scheduler_factory= None,
-        constraint=MultiLayerLogicGateNet.constraint,
-        checkpoint_path=Path("artifacts/binary_transformer_checkpoint.pt") if save_checkpoint else None,
-        device=device,
-        check_grad=True,
-        peek=net.peek,
-        state=TrainerState(patience=10),
-    )
-    checkpoint = trainer.train()
-    #trainer.export_for_burn(Path("artifacts/burn_export"))
-    plot_training_loss(checkpoint.avg_errors())
-    plot_weight_distribution(checkpoint.model)
-    
-    # Cleanup TensorBoard
-    return checkpoint
 
 
 
 def main():
-    train_mnist(save_checkpoint=False)
-    #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
-    #animate_gradient_distributions(checkpoint)
-    #train_xor()
+    train_xor(save_checkpoint=False)
 if __name__ == "__main__":
     main()
 

@@ -11,3 +11,7 @@ Because we have seen having w.relu() error yield better result
 - Always use lower learning rate,Default ADAm settings is giving better result than scaled one
 - Lower reg is always bad on avg,Not sure why
 - Will try increasing as much as possible to see the effect.
+
+
+## Experiment 1:
+Currently I have initialization for having mean =1 for even layer,and mean =0 for odd layer,I am now testing how much regularization helps in here.
