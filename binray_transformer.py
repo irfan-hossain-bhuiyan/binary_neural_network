@@ -348,6 +348,7 @@ def train_xor_main():
         layer_dims=(256, 128, 64,128,64,32),
         use_softmax=True,
         max_threshold=0.95,
+        grad_scalar=True,
     )        
     trainer = Trainer(
             dataset=(x_train, y_train),
@@ -357,7 +358,7 @@ def train_xor_main():
             loss_fn=nn.MSELoss(),
             optimizer_cls=Adam,
             optimizer_kwargs={},
-            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5,0.5,0.5),
+            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.1,0.1,0.1),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
             checkpoint_path=None, # Don't overwrite for each run
