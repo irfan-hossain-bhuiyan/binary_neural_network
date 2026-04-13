@@ -139,6 +139,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
         odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
+        load_file: str | Path | None = None,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -161,6 +162,15 @@ class MultiLayerLogicGateNet(nn.Module):
             )
             self.expectation_layers.append(layer)
             in_dim = out_dim
+
+        if load_file is not None:
+            load_path = Path(load_file) if isinstance(load_file, str) else load_file
+            if load_path.exists():
+                self.load_state_dict(torch.load(load_path, weights_only=True))
+            else:
+                # Ensure parent directory exists
+                load_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(self.state_dict(), load_path)
  
     def clone(self):
         return copy.deepcopy(self)
@@ -255,7 +265,7 @@ def train_mnist(save_checkpoint: bool = False):
     )
     
     
-def train_xor(epoch:int=100,is_dataparallel:bool=False):
+def train_xor(epoch:int=50,is_dataparallel:bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -291,7 +301,7 @@ def train_xor(epoch:int=100,is_dataparallel:bool=False):
             stop_on=stop_on_epoch(epoch),
             batch_size=128,
             model=model,
-            loss_fn=nn.HuberLoss(delta=0.3),
+            loss_fn=nn.HuberLoss(delta=0.1),
             optimizer_cls=Adam,
             optimizer_kwargs={},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
@@ -300,7 +310,7 @@ def train_xor(epoch:int=100,is_dataparallel:bool=False):
             checkpoint_path=None, # Don't overwrite for each run
             device=device,
             check_grad=False, # Turned off to reduce console spam for 4 runs
-            state=TrainerState(patience=30),
+            state=None,
             peek=net.peek,
         )
         ckpt = trainer.train()
@@ -321,8 +331,6 @@ def train_xor(epoch:int=100,is_dataparallel:bool=False):
     plt.show()
 
     return checkpoints
-
-
 
 
 def main():
