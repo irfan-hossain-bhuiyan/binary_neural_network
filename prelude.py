@@ -207,6 +207,7 @@ def stop_on_epoch(max_epochs: int) -> Callable[..., bool]:
     """Factory: stops exactly after max_epochs epochs."""
     def callback(epoch: int) -> bool:
         return epoch >= max_epochs
+    return callback
 class FnCallOnPlateau:
     """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
     def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer,func:Callable[[nn.Module]]):
