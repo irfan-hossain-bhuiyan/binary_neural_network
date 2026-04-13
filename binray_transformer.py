@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, TrainerState, animate_gradient_flow, fn_call_on_plateau_scheduler, early_stopping,load_checkpoint, plateau_scheduler, save_checkpoint, stop_on_epoch, leaky_clamp, plot_training_loss, Trainer, split_dataset
+from prelude import DEVICE, TrainerState,  fn_call_on_plateau_scheduler, early_stopping, leaky_clamp, plot_training_loss, Trainer, split_dataset
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 from prelude import plot_weight_distribution
 
@@ -165,15 +165,18 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):    
-        def regularization(module:"MultiLayerLogicGateNet"):
+    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True,error_scaler_on_platau=1.0):
+        error_scale=1
+        def regularization(module:"MultiLayerLogicGateNet",state:TrainerState):
+            nonlocal error_scale
+            if state.is_plateaued: error_scale*=error_scaler_on_platau
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
                 layer = cast(OrGateLayer, layer)
                 w = layer.weight
                 b = layer.bias
                 
-                l1_error = w.relu().mean() + b.relu().mean()
+                l1_error = w.relu().mean() 
                 disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
                 disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
                 disc_error = (disc_error_w + disc_error_b)
@@ -181,7 +184,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau_err = torch.exp(-layer.tau)
                 reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
                 # Encourage tau to grow larger (L1 regularization, negative sign)
-            return reg
+            return reg*error_scale
         def close_to_discrete(module:Any):
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
@@ -243,41 +246,65 @@ def train_mnist(save_checkpoint: bool = False):
     dataset_path = Path("artifacts/mnist_binary.pt")
     x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
     x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
-    net = MultiLayerLogicGateNet(
+    
+    # Base network to clone from, ensuring all models start with the same exact weights
+    base_net = MultiLayerLogicGateNet(
         input_dim=784,
         layer_dims=(128,64,128,64, 128, 4),
         use_softmax=True,
-    #even_initialization=lambda x:nn.init.normal_(x,mean=0),
-    #odd_initialization=lambda x:nn.init.normal_(x,mean=1)
     )
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
-        model = nn.DataParallel(net)
-    else:
-        model = net
+    
+    from prelude import stop_on_epoch
+    import matplotlib.pyplot as plt
+    
+    l1_regs = [0.01, 0.05, 0.1, 0.5]
+    checkpoints = []
 
-    from torch.optim.lr_scheduler import ReduceLROnPlateau
-    trainer = Trainer(
-        dataset=(x_train, y_train),
-        stop_on=early_stopping(30, max_epochs=100),
-        batch_size=128,
-        model=model,
-        loss_fn=nn.HuberLoss(delta=0.5),
-        optimizer_cls=Adam,
-        optimizer_kwargs={"betas": (0.5, 0.5), "lr": 1},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.01,0.01,0.01),
-        lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
-        constraint=MultiLayerLogicGateNet.constraint,
-        checkpoint_path=Path("artifacts/mnist_transformer_checkpoint.pt") if save_checkpoint else None,
-        device=device,
-        check_grad=True,
-        state=TrainerState(),
-        peek=net.peek,
-    )
-    checkpoint = trainer.train()
-    plot_training_loss(checkpoint.avg_losses())
-    plot_weight_distribution(checkpoint.model)
-    return checkpoint
+    for l1 in l1_regs:
+        print(f"\n{'='*50}\nStarting training with L1 = {l1}, Disc = 0.01, Tau = 0.01\n{'='*50}")
+        net = base_net.clone()
+        
+        if torch.cuda.device_count() > 1:
+            print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
+            model = nn.DataParallel(net)
+        else:
+            model = net
+
+        trainer = Trainer(
+            dataset=(x_train, y_train),
+            stop_on=stop_on_epoch(50),
+            batch_size=128,
+            model=model,
+            loss_fn=nn.HuberLoss(delta=0.5),
+            optimizer_cls=Adam,
+            optimizer_kwargs={},
+            regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, 0.01, 0.01),
+            lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
+            constraint=MultiLayerLogicGateNet.constraint,
+            checkpoint_path=None, # Don't overwrite for each run
+            device=device,
+            check_grad=False, # Turned off to reduce console spam for 4 runs
+            state=TrainerState(patience=30),
+            peek=net.peek,
+        )
+        ckpt = trainer.train()
+        checkpoints.append((l1, ckpt))
+
+    # Plot all errors together
+    plt.figure(figsize=(10, 6))
+    for l1, ckpt in checkpoints:
+        errors = ckpt.avg_errors()
+        plt.plot(range(1, len(errors) + 1), errors, label=f"L1 = {l1}", linewidth=2)
+        
+    plt.xlabel("Epoch")
+    plt.ylabel("Testing Error")
+    plt.title("Effect of L1 Regularization on Training Error")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    return checkpoints
 
 def train_xor(save_checkpoint: bool = False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -306,7 +333,7 @@ def train_xor(save_checkpoint: bool = False):
     # and logs to TensorBoard for plotting.
     trainer = Trainer(
         dataset=(x_train, y_train),
-        stop_on=early_stopping(10, max_epochs=200),
+        stop_on=early_stopping(max_epochs=200),
         batch_size=128,
         model=model,
         loss_fn=nn.MSELoss(),
@@ -319,6 +346,7 @@ def train_xor(save_checkpoint: bool = False):
         device=device,
         check_grad=True,
         peek=net.peek,
+        state=TrainerState(patience=10),
     )
     checkpoint = trainer.train()
     #trainer.export_for_burn(Path("artifacts/burn_export"))
@@ -331,10 +359,10 @@ def train_xor(save_checkpoint: bool = False):
 
 
 def main():
-    #train_mnist(save_checkpoint=True)
+    train_mnist(save_checkpoint=False)
     #checkpoint=load_training_checkpoint("./binary_transformer_checkpoint.pt",DEVICE)
     #animate_gradient_distributions(checkpoint)
-    train_xor()
+    #train_xor()
 if __name__ == "__main__":
     main()
 

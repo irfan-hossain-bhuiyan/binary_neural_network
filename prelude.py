@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
-from torch import Tensor, random
+from torch import Tensor
 from torch.optim import Adam
 from rich.console import Console
 from rich.table import Table
@@ -152,11 +152,21 @@ class TrainerState:
     loss_no_improve: int = 0
     error_no_improve: int = 0
     
-    # Thresholds for plateau
+    # Thresholds & settings for plateau
     loss_min_delta: float = 1e-4
     error_min_delta: float = 1e-3
+    patience: int = 10
+    is_plateaued: bool = False
 
     def update(self, epoch: int, avg_loss: float, avg_error: float, avg_regularization: float):
+        # If we plateaued LAST epoch, reset our tracking now before evaluating this epoch.
+        if self.is_plateaued:
+            self.best_loss = float("inf")
+            self.loss_no_improve = 0
+            self.best_error = float("inf")
+            self.error_no_improve = 0
+            self.is_plateaued = False
+
         self.epoch = epoch
         self.avg_loss = avg_loss
         self.avg_error = avg_error
@@ -175,26 +185,20 @@ class TrainerState:
             self.error_no_improve = 0
         else:
             self.error_no_improve += 1
-
-    def reset_plateau(self):
-        self.best_loss = float("inf")
-        self.loss_no_improve = 0
-        self.best_error = float("inf")
-        self.error_no_improve = 0
+            
+        if self.loss_no_improve >= self.patience or self.error_no_improve >= self.patience:
+            self.is_plateaued = True
 
 
-def early_stopping(
-    patience:   int,
-    max_epochs: int   = 500,
-) -> Callable[..., bool]:
+
+def early_stopping(max_epochs: int = 500) -> Callable[..., bool]:
     """
     Factory: plateau-based stopping.
 
-    Stops when avg_error has not improved by at least state.error_min_delta for
-    patience consecutive epochs, or when max_epochs is reached.
+    Stops when the state reports it has plateaued AND the epoch has reached (or exceeded) max_epochs.
     """
     def callback(epoch: int, state: "TrainerState") -> bool:
-        return state.error_no_improve >= patience or epoch >= max_epochs
+        return state.is_plateaued or epoch >= max_epochs
 
     return callback
 
@@ -203,35 +207,31 @@ def stop_on_epoch(max_epochs: int) -> Callable[..., bool]:
     """Factory: stops exactly after max_epochs epochs."""
     def callback(epoch: int) -> bool:
         return epoch >= max_epochs
-    return callback
-
-
-# ══════════════════════════════════════════════
-# LR SCHEDULER FACTORIES  (model-aware)
-# ══════════════════════════════════════════════
-#
-# Signature:  factory(model, optimizer) -> LRScheduler
-#
-# The model argument lets you build param-group or layer-wise schedules.
-# The built-in factories do not need it but accept it for API consistency.
-
 class FnCallOnPlateau:
     """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
-    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer,func:Callable[[nn.Module]] ,patience: int = 10, min_delta: float = 1e-4):
+    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer,func:Callable[[nn.Module]]):
         self.model = model
         self.optimizer = optimizer
-        self.patience = patience
         self.func=func
 
     def step(self, state: "TrainerState"):
-        if state.loss_no_improve >= self.patience:
+        if state.is_plateaued:
             CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {state.epoch}): Discretizing model[/bold yellow]")
             self.func(self.model)
             # Reset the optimizer state since the model has changed
             from collections import defaultdict
             self.optimizer.state = defaultdict(dict)
-            # Reset the state to "infinite" error to start tracking plateau anew
-            state.reset_plateau()
+
+def fn_call_on_plateau_scheduler(
+    fn:Callable[[nn.Module]],
+) -> Callable[[nn.Module, torch.optim.Optimizer], FnCallOnPlateau]:
+    """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
+    def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
+        return FnCallOnPlateau(
+            model=model, optimizer=optimizer,func=fn
+        )
+    return factory
+
 
 def fn_call_on_plateau_scheduler(
     fn:Callable[[nn.Module]],
@@ -241,7 +241,7 @@ def fn_call_on_plateau_scheduler(
     """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
     def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
         return FnCallOnPlateau(
-            model=model, optimizer=optimizer,func=fn,patience=patience, min_delta=min_delta
+            model=model, optimizer=optimizer,func=fn
         )
     return factory
 
