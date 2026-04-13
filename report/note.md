@@ -34,6 +34,6 @@ Newly initialized model
 HuberLoss(delta=0.1) results
 ![](./regularization_huberloss.png)
 
-and this one with increased learning rate=0.1 and HuberLoss(delta=0.5),
-HuberLoss(delta=0.5) is the way to go.
-But I also increased the learning_rate,Was it a impact of that as well,Don't know.
+HuberLoss(delta=0.5) is the way to go.Didn't increase learning rate.
+![](./huber_loss.png)
+I increased the dimension to see how the performance get better.

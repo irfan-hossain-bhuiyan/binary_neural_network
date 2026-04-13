@@ -276,7 +276,7 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
 
     base_net = MultiLayerLogicGateNet(
         input_dim=64,
-        layer_dims=(256, 128, 64, 32),
+        layer_dims=(256, 128, 64,128,64 ,32),
         use_softmax=True,
         max_threshold=0.95,
     )
@@ -334,7 +334,7 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
 
 
 def main():
-    train_xor(save_checkpoint=False)
+    train_xor()
 if __name__ == "__main__":
     main()
 
