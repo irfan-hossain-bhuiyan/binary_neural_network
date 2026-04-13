@@ -41,5 +41,5 @@ I increased the dimension to see how the performance get better.Previously I had
 ![](./higher_dim.png)
 
 ## Experiment 3:
-1. In HuberLoss(delta=0.5) 0.05 regularization ,I previously used lr=0.1 and betas:(0.5,0.5),I think what will work better here.
-As the model is learning steadly.But also come the discretization part,I need to see what I can do?
+With different test it seems like low learning rate is doing best for HuberLoss.
+![](./current_best.png)

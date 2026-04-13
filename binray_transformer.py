@@ -118,7 +118,7 @@ class OrNorGateLayer(nn.Module):
             if self.grad_scalar:
                 if s.requires_grad:
                     max_p_s = p.max(dim=-1).values.detach()
-                    s.register_hook(lambda grad: grad / (max_p_s + 1e-1))
+                    s.register_hook(lambda grad: grad / (max_p_s + 2e-1))
         else:
             s = z.max(dim=-1).values
 
@@ -138,6 +138,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
         odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
+        grad_scalar:bool=False,
         load_file: str | Path | None = None,
     ):
         super().__init__()
@@ -158,6 +159,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 use_softmax=use_softmax,
                 max_threshold=max_threshold,
                 initialization=initialization,
+                grad_scalar=grad_scalar,
             )
             self.expectation_layers.append(layer)
             in_dim = out_dim
@@ -343,7 +345,7 @@ def train_xor_main():
 
     net = MultiLayerLogicGateNet(
         input_dim=64,
-        layer_dims=(256, 128, 64,32),
+        layer_dims=(256, 128, 64,128,64,32),
         use_softmax=True,
         max_threshold=0.95,
     )        
