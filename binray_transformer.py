@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
-from torch.optim import Adam
+from torch.optim import Adam, RAdam
 from prelude import DEVICE, TrainerState,  leaky_clamp, Trainer, plot_training_loss, split_dataset, stop_on_epoch
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
 
@@ -302,7 +302,7 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
             batch_size=128,
             model=model,
             loss_fn=nn.HuberLoss(delta=0.5),
-            optimizer_cls=Adam,
+            optimizer_cls=torch.optim.RAdam,
             optimizer_kwargs={},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
@@ -353,8 +353,8 @@ def train_xor_main():
             batch_size=128,
             model=net,
             loss_fn=nn.HuberLoss(delta=0.5),
-            optimizer_cls=Adam,
-            optimizer_kwargs={},
+            optimizer_cls=RAdam,
+            optimizer_kwargs={"lr":1},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.05,0.05,0.1),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
