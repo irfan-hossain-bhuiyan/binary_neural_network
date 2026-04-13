@@ -310,7 +310,7 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
             checkpoint_path=None, # Don't overwrite for each run
             device=device,
             check_grad=False, # Turned off to reduce console spam for 4 runs
-            state=None,
+            state=TrainerState(30),
             peek=net.peek,
         )
         ckpt = trainer.train()
