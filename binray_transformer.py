@@ -255,7 +255,7 @@ def train_mnist(save_checkpoint: bool = False):
     )
     
     
-def train_xor(save_checkpoint: bool = False,is_dataparallel=bool=False):
+def train_xor(save_checkpoint: bool = False,is_dataparallel:bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
