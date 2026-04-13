@@ -278,7 +278,7 @@ def train_mnist(save_checkpoint: bool = False):
             loss_fn=nn.HuberLoss(delta=0.5),
             optimizer_cls=Adam,
             optimizer_kwargs={},
-            regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, 0.01, 0.01),
+            regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
             lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
             checkpoint_path=None, # Don't overwrite for each run
