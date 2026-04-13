@@ -303,7 +303,7 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
             model=model,
             loss_fn=nn.HuberLoss(delta=0.5),
             optimizer_cls=Adam,
-            optimizer_kwargs={"lr":0.1},
+            optimizer_kwargs={},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
