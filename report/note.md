@@ -43,3 +43,8 @@ I increased the dimension to see how the performance get better.Previously I had
 ## Experiment 3:
 With different test it seems like low learning rate is doing best for HuberLoss.
 ![](./current_best.png)
+
+## Experiment 4: 
+Icreased the layer count 
+(256, 128, 64,128,64 ,32) seeinf the feedback.As before,it plataued faster.
+![](./more_layer.png)

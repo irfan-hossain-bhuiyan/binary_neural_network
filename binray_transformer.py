@@ -352,12 +352,12 @@ def train_xor_main():
     trainer = Trainer(
             dataset=(x_train, y_train),
             stop_on=stop_on_epoch(200),
-            batch_size=128,
+            batch_size=64,
             model=net,
-            loss_fn=nn.HuberLoss(delta=0.5),
+            loss_fn=nn.MSELoss(),
             optimizer_cls=Adam,
             optimizer_kwargs={},
-            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.05,0.05,0.1),
+            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5,0.5,0.5),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
             checkpoint_path=None, # Don't overwrite for each run
