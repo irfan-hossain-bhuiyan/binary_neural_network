@@ -255,7 +255,7 @@ def train_mnist(save_checkpoint: bool = False):
     )
     
     
-def train_xor(save_checkpoint: bool = False):
+def train_xor(save_checkpoint: bool = False,is_dataparallel=bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -280,7 +280,7 @@ def train_xor(save_checkpoint: bool = False):
         print(f"\n{'='*50}\nStarting training with L1 = {l1}, Disc = 0.01, Tau = 0.01\n{'='*50}")
         net = base_net.clone()
         
-        if torch.cuda.device_count() > 1:
+        if torch.cuda.device_count() > 1 and is_dataparallel:
             print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
             model = nn.DataParallel(net)
         else:
