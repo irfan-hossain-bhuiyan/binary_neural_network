@@ -277,7 +277,7 @@ def train_xor(save_checkpoint: bool = False,is_dataparallel:bool=False):
     checkpoints = []
 
     for l1 in l1_regs:
-        print(f"\n{'='*50}\nStarting training with L1 = {l1}, Disc = 0.01, Tau = 0.01\n{'='*50}")
+        print(f"\n{'='*50}\nStarting training with L1 = {l1}, Disc = {l1}, Tau = {l1}\n{'='*50}")
         net = base_net.clone()
         
         if torch.cuda.device_count() > 1 and is_dataparallel:
