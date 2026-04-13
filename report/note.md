@@ -48,3 +48,11 @@ With different test it seems like low learning rate is doing best for HuberLoss.
 Icreased the layer count 
 (256, 128, 64,128,64 ,32) seeinf the feedback.As before,it plataued faster.
 ![](./more_layer.png)
+
+## Experiment 5:
+I changed the error to MSE and with increased layer mSE worked somehwat better,than HuberLoss(0.5),with scale_grad
+regularization=0.1,also I reduced the batch size on this one,I don't know if huge has changed.
+![](./mse_more_layer.png)
+
+Still it wasn't better,Let's remove the scale_grad and see the result.
+## Experiment 6:
