@@ -354,7 +354,7 @@ def train_xor_main():
             model=net,
             loss_fn=nn.HuberLoss(delta=0.5),
             optimizer_cls=RAdam,
-            optimizer_kwargs={"lr":1},
+            optimizer_kwargs={"lr":0.1},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.05,0.05,0.1),
             lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
