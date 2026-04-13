@@ -784,10 +784,11 @@ class Trainer:
     # ------------------------------------------------------------------
     def train(self) -> Checkpoint:
         self.model = self.model.to(self.device)
+        unwrapped_model = getattr(self.model, "module", self.model)
 
         optimizer = self.optimizer_cls(self.model.parameters(), **self.optimizer_kwargs)
         scheduler = (
-            self.lr_scheduler_factory(self.model, optimizer)
+            self.lr_scheduler_factory(unwrapped_model, optimizer)
             if self.lr_scheduler_factory is not None else None
         )
 
@@ -815,7 +816,6 @@ class Trainer:
                 logits = self.model(xb)
                 
                 if self.regularization_fn is not None:
-                    unwrapped_model = getattr(self.model, "module", self.model)
                     reg = _call_matching(self.regularization_fn, {"module": unwrapped_model, "model": unwrapped_model, "state": self.state})
                 else:
                     reg = torch.tensor(0.0)
@@ -825,18 +825,17 @@ class Trainer:
 
                 # Collect stats right after backward, before step.
                 if self.check_grad:
-                    acc_stats = _accumulate_grad_stats(acc_stats, collect_grad_stats(self.model))
+                    acc_stats = _accumulate_grad_stats(acc_stats, collect_grad_stats(unwrapped_model))
 
                 optimizer.step()
 
                 with torch.no_grad():
                     epoch_error += self.error_fn(logits, yb).item()
                     if self.constraint is not None:
-                        _call_matching(self.constraint, {"module": self.model, "model": self.model, "state": self.state})
+                        _call_matching(self.constraint, {"module": unwrapped_model, "model": unwrapped_model, "state": self.state})
                     
-                    underlying_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
-                    if hasattr(underlying_model, "apply_constraints"):
-                        _call_matching(underlying_model.apply_constraints, {"module": underlying_model, "model": underlying_model, "state": self.state})
+                    if hasattr(unwrapped_model, "apply_constraints"):
+                        _call_matching(unwrapped_model.apply_constraints, {"module": unwrapped_model, "model": unwrapped_model, "state": self.state})
                 epoch_loss += loss.item()
                 epoch_reg  += reg.item()
                 num_batches += 1
@@ -884,7 +883,7 @@ class Trainer:
                 "avg_error":          avg_error,
                 "avg_regularization": avg_reg,
                 "history":            history,
-                "model":              self.model,
+                "model":              unwrapped_model,
                 "state":              self.state,
             }
             if _call_matching(self.stop_on, stop_metrics):
