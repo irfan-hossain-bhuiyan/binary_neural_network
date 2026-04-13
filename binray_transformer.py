@@ -8,13 +8,12 @@ import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.optim import Adam
-from prelude import DEVICE, TrainerState,  fn_call_on_plateau_scheduler, early_stopping, leaky_clamp, plot_training_loss, Trainer, save_checkpoint, split_dataset
+from prelude import DEVICE, TrainerState,  leaky_clamp, Trainer, plot_training_loss, split_dataset, stop_on_epoch
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
-from prelude import plot_weight_distribution
 
 def xor(a:Tensor,b:Tensor)->torch.Tensor:
     return a+b-2*a*b
-class OrGateLayer(nn.Module):
+class OrNorGateLayer(nn.Module):
     """Expectation layer that can operate in soft (softmax) or hard (argmax) mode.
 
     Args:
@@ -152,7 +151,7 @@ class MultiLayerLogicGateNet(nn.Module):
         in_dim = input_dim # As the first one passes to an inverter.
         for i,out_dim in enumerate(self.layer_dims):
             initialization=even_initialization if i%2==0 else odd_initialization
-            layer = OrGateLayer(
+            layer = OrNorGateLayer(
                 in_features=in_dim,
                 out_features=out_dim,
                 tau=init_tau_param,
@@ -175,14 +174,15 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True,error_scaler_on_platau=1.0):
+    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True,error_scaler_on_platau:None|float=None):
         error_scale=1
         def regularization(module:"MultiLayerLogicGateNet",state:TrainerState):
             nonlocal error_scale
-            if state.is_plateaued: error_scale*=error_scaler_on_platau
+            if error_scaler_on_platau is not None:
+                if state.is_plateaued: error_scale*=error_scaler_on_platau
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
-                layer = cast(OrGateLayer, layer)
+                layer = cast(OrNorGateLayer, layer)
                 w = layer.weight
                 b = layer.bias
                 
@@ -198,7 +198,7 @@ class MultiLayerLogicGateNet(nn.Module):
         def close_to_discrete(module:Any):
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
-                layer = cast(OrGateLayer, layer)
+                layer = cast(OrNorGateLayer, layer)
                 w = layer.weight
                 b = layer.bias
                 disc_error_w = (0.5-(w-0.5).abs()).abs().mean()
@@ -211,24 +211,24 @@ class MultiLayerLogicGateNet(nn.Module):
         else:return close_to_discrete
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
-            layer = cast(OrGateLayer,layer)
+            layer = cast(OrNorGateLayer,layer)
             layer.use_softmax=value
 
     def peek(self) -> dict[str, Any]:
         result = {}
         with torch.no_grad():
             if self.is_shared_tau:
-                first_layer = cast(OrGateLayer, self.expectation_layers[0])
+                first_layer = cast(OrNorGateLayer, self.expectation_layers[0])
                 result["shared_tau"] = first_layer.tau.mean().item() if first_layer.tau.numel() > 1 else first_layer.tau.item()
             else:
                 for i, layer in enumerate(self.expectation_layers):
-                    layer = cast(OrGateLayer, layer)
+                    layer = cast(OrNorGateLayer, layer)
                     result[f"tau_{i}"] = layer.tau.mean().item() if layer.tau.numel() > 1 else layer.tau.item()
         return result
 
     def constraint(module:Any):
         for layer in module.expectation_layers:
-            layer = cast(OrGateLayer, layer)
+            layer = cast(OrNorGateLayer, layer)
             layer.weight.clamp_(-10.0, 10.0)
             layer.bias.clamp_(-10.0, 10.0)
             layer.tau_costraint(20)
@@ -237,13 +237,13 @@ class MultiLayerLogicGateNet(nn.Module):
     @property
     def tau(self) -> torch.Tensor | list[torch.Tensor]:
         if self.is_shared_tau:
-            first_layer = cast(OrGateLayer, self.expectation_layers[0])
+            first_layer = cast(OrNorGateLayer, self.expectation_layers[0])
             return first_layer.tau
-        return [cast(OrGateLayer, layer).tau for layer in self.expectation_layers]
+        return [cast(OrNorGateLayer, layer).tau for layer in self.expectation_layers]
 
     def discretize(module:Any, threshold: float=0.5) -> None:
         for layer in module.expectation_layers:
-            layer = cast(OrGateLayer, layer)
+            layer = cast(OrNorGateLayer, layer)
             layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -265,7 +265,7 @@ def train_mnist():
     )
     
     
-def train_xor(epoch:int=50,is_dataparallel:bool=False):
+def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -332,9 +332,44 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
+def train_xor_main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dataset_path = Path("artifacts/xor_dataset.pt")
+    if not dataset_path.exists():
+        save_xor_dataset(dataset_path, num_samples=100000)
+
+    x_all, y_all = load_xor_dataset(dataset_path, device=device)
+    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
+
+    net = MultiLayerLogicGateNet(
+        input_dim=64,
+        layer_dims=(256, 128, 64,128,64 ,32),
+        use_softmax=True,
+        max_threshold=0.95,
+    )        
+    trainer = Trainer(
+            dataset=(x_train, y_train),
+            stop_on=stop_on_epoch(200),
+            batch_size=128,
+            model=net,
+            loss_fn=nn.HuberLoss(delta=0.5),
+            optimizer_cls=Adam,
+            optimizer_kwargs={"lr":0.1,"betas":(0.5,0.5),},
+            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.05,0.05,0.1),
+            lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
+            constraint=MultiLayerLogicGateNet.constraint,
+            checkpoint_path=None, # Don't overwrite for each run
+            device=device,
+            check_grad=False, # Turned off to reduce console spam for 4 runs
+            state=TrainerState(50),
+            peek=net.peek,
+        )
+    ckpt = trainer.train()
+    plot_training_loss(ckpt.avg_errors())
+    return ckpt
 
 def main():
-    train_xor()
+    train_xor_extend_layer()
 if __name__ == "__main__":
     main()
 
