@@ -251,7 +251,7 @@ class MultiLayerLogicGateNet(nn.Module):
             x = layer(x)
         return x
 
-def train_mnist(save_checkpoint: bool = False):
+def train_mnist():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/mnist_binary.pt")
     x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
@@ -301,16 +301,16 @@ def train_xor(epoch:int=50,is_dataparallel:bool=False):
             stop_on=stop_on_epoch(epoch),
             batch_size=128,
             model=model,
-            loss_fn=nn.HuberLoss(delta=0.1),
+            loss_fn=nn.HuberLoss(delta=0.5),
             optimizer_cls=Adam,
-            optimizer_kwargs={},
+            optimizer_kwargs={"lr":0.1},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
             lr_scheduler_factory=fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
             constraint=MultiLayerLogicGateNet.constraint,
             checkpoint_path=None, # Don't overwrite for each run
             device=device,
             check_grad=False, # Turned off to reduce console spam for 4 runs
-            state=TrainerState(30),
+            state=TrainerState(50),
             peek=net.peek,
         )
         ckpt = trainer.train()

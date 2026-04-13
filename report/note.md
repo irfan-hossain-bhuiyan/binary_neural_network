@@ -21,7 +21,7 @@ Newly Initialized model.
 3. I had a batch size of 256,Higher than 128
 4. use adam optimizer,with default learning rate,Because I think low learning rate 
 3. Their is a balance on what regulairzation works better.Here 0.05 works the best.
-![](./)
+![](./regularization_test.png)
 4. So I think using differnet loss function will influence the result differently
 
 Newly initialized model
@@ -31,5 +31,8 @@ Newly initialized model
 3. Test which regularization works best.
 4. Doing 100 epoch of training.
 5. In simple glance,the HuberLoss is doing ridiculiously good,compared to MSELoss,It can because of both have different initialization.Or because it have more randomization because of 128 batch size.
+HuberLoss(delta=0.1) results
+![](./regularization_huberloss.png)
 
-
+and this one with increased learning rate=0.1 and HuberLoss(delta=0.5)
+![]()
