@@ -815,7 +815,8 @@ class Trainer:
                 logits = self.model(xb)
                 
                 if self.regularization_fn is not None:
-                    reg = _call_matching(self.regularization_fn, {"module": self.model, "model": self.model, "state": self.state})
+                    unwrapped_model = getattr(self.model, "module", self.model)
+                    reg = _call_matching(self.regularization_fn, {"module": unwrapped_model, "model": unwrapped_model, "state": self.state})
                 else:
                     reg = torch.tensor(0.0)
                 
