@@ -255,7 +255,7 @@ def train_mnist(save_checkpoint: bool = False):
     )
     
     
-def train_xor(save_checkpoint: bool = False,is_dataparallel:bool=False):
+def train_xor(epoch:int=100,is_dataparallel:bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -288,10 +288,10 @@ def train_xor(save_checkpoint: bool = False,is_dataparallel:bool=False):
 
         trainer = Trainer(
             dataset=(x_train, y_train),
-            stop_on=stop_on_epoch(50),
-            batch_size=256,
+            stop_on=stop_on_epoch(epoch),
+            batch_size=128,
             model=model,
-            loss_fn=nn.MSELoss(),
+            loss_fn=nn.HuberLoss(delta=0.3),
             optimizer_cls=Adam,
             optimizer_kwargs={},
             regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),

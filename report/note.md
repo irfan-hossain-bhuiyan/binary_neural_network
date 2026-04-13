@@ -14,4 +14,14 @@ Because we have seen having w.relu() error yield better result
 
 
 ## Experiment 1:
-Currently I have initialization for having mean =1 for even layer,and mean =0 for odd layer,I am now testing how much regularization helps in here.
+1. Currently I have initialization for having mean =1 for even layer,and mean =0 for odd layer,I am now testing how much regularization helps in here.
+2. had MSE error
+3. I had a batch size of 256,Higher than 128
+3. Their is a balance on what regulairzation works better.Here 0.05 works the best.
+![](./)
+4. So I think using differnet loss function will influence the result differently
+## Experiment 2: 
+1. I aam gonna do the entire experiment on experiment 1,But with HuberLoss,I think this will work better.
+2. batch size 128,Making some more rng.
+3. Test which regularization works best.
+4. Doing 100 epoch of training.

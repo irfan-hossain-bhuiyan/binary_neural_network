@@ -23,14 +23,3 @@ Like neural network given enough depth and width we can mimic any logical relati
 We will map the gate in a continious domain
 $x_i \and w_i=x_i*w_i$ and or gate will be softmax(z*tau)*z to get the expected max,$tau=1/temprature$ and tau is encouraged to grow.
 and b is beta make if the or gate should passed with not gate.
-## Training 1
-I will start with training xor gate.So 16 bit +16 bit=32 bit input,The setup is 
-1. 100000 sample
-2. Layers =(256, 128, 64, 32)
-3. No regularization has been added.
-4. The bais is initialized to 1
-5. No lr scheduler
-6. adam optimizer with {"betas":(0.25,0.25),"lr":0.1},
-
-## Observation:
-1. On basic observation,higher regularization result in better performance,Need to plot graph of all of them
