@@ -371,50 +371,26 @@ def train_xor_main(run_id="", epoch=100):
     plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
 
-import concurrent.futures
-import multiprocessing as mp
 import sys
-import contextlib
 import io
 
-def _run_captured(run_id):
-    f = io.StringIO()
-    with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
-        print(f"========== STARTING RUN {run_id} ==========")
-        try:
-            res = train_xor_main(run_id=run_id)
-            print(f"========== COMPLETED RUN {run_id} ==========")
-        except Exception as e:
-            print(f"========== FAILED RUN {run_id}: {e} ==========")
-            res = None
-    return run_id, f.getvalue(), res
-
-def run_train_xor_main_parallel():
-    print("Running train_xor_main 3 times in parallel...")
+def run_train_xor_main_sequential():
+    print("Running train_xor_main 3 times sequentially...")
     results = []
     
-    # ProcessPoolExecutor gives true parallelism and separate memory spaces.
-    # We must use the 'spawn' context to avoid CUDA re-initialization errors on Linux.
-    ctx = mp.get_context('spawn')
-    with concurrent.futures.ProcessPoolExecutor(max_workers=3, mp_context=ctx) as executor:
-        futures = {executor.submit(_run_captured, i + 1): i for i in range(3)}
-        
-        for future in concurrent.futures.as_completed(futures):
-            run_id, output, res = future.result()
+    for i in range(1, 4):
+        print(f"\n========== STARTING RUN {i} ==========")
+        try:
+            res = train_xor_main(run_id=str(i))
+            results.append(res)
+            print(f"========== COMPLETED RUN {i} ==========")
+        except Exception as e:
+            print(f"========== FAILED RUN {i}: {e} ==========")
             
-            # Print the entire collected output for this run all at once
-            print(output)
-            
-            if res is not None:
-                results.append(res)
-                print(f"Run {run_id}/3 finished successfully.\n")
-            else:
-                print(f"Run {run_id}/3 generated an exception.\n")
-                
     return results
 
 def main():
-    run_train_xor_main_parallel()
+    run_train_xor_main_sequential()
 if __name__ == "__main__":
     main()
 
