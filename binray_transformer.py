@@ -348,7 +348,7 @@ def train_xor_main(run_id="", epoch=100):
         layer_dims=(256, 128, 64,128,64,32),
         use_softmax=True,
         max_threshold=0.95,
-        grad_scalar=True,
+        #grad_scalar=True,
     )        
     trainer = Trainer(
         dataset=(x_train, y_train),

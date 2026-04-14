@@ -64,7 +64,10 @@ Ok having
 5.
 I have made the model learn much better.
 Given I have kept the default optimizer settigns,
-![](./)
-
 result:As it turns out the this approach has a lot of plataued values. Some time the result is not good as expected.
+![](./mse1.png)
+![](./mse2.png)
+![](./mse3.png)
 
+## Experiment 7:
+Testing if changing the grad_scalar has positive or negative effect.
