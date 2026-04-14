@@ -70,4 +70,8 @@ result:As it turns out the this approach has a lot of plataued values. Some time
 ![](./mse3.png)
 
 ## Experiment 7:
-Testing if changing the grad_scalar has positive or negative effect.
+Testing if changing the grad_scalar has positive or negative effect.It turns out current grad_scalar has good effect on the optimization given the regularization is high enough,
+Current test similar to experiment 6,but with no grad scalar,Making.
+![](./no_scale1.png)
+![](./no_scale2.png)
+![](./no_scale3.png)
