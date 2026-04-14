@@ -350,23 +350,23 @@ def train_xor_main(run_id="", epoch=100):
         max_threshold=0.95,
         grad_scalar=True,
     )        
-        trainer = Trainer(
-            dataset=(x_train, y_train),
-            stop_on=stop_on_epoch(epoch),
-            batch_size=64,
-            model=net,
-            loss_fn=nn.MSELoss(),
-            optimizer_cls=Adam,
-            optimizer_kwargs={},
-            regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5,0.5,0.5),
-            lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
-            constraint=MultiLayerLogicGateNet.constraint,
-            checkpoint_path=None, # Don't overwrite for each run
-            device=device,
-            check_grad=False, # Turned off to reduce console spam for 4 runs
-            state=TrainerState(50),
-            peek=net.peek,
-        )
+    trainer = Trainer(
+        dataset=(x_train, y_train),
+        stop_on=stop_on_epoch(epoch),
+        batch_size=64,
+        model=net,
+        loss_fn=nn.MSELoss(),
+        optimizer_cls=Adam,
+        optimizer_kwargs={},
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5,0.5,0.5),
+        lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
+        constraint=MultiLayerLogicGateNet.constraint,
+        checkpoint_path=None, # Don't overwrite for each run
+        device=device,
+        check_grad=False, # Turned off to reduce console spam for 4 runs
+        state=TrainerState(50),
+        peek=net.peek,
+    )
     ckpt = trainer.train()
     plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
