@@ -353,7 +353,7 @@ def train_xor_main(run_id="", epoch=100):
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
-        batch_size=64,
+        batch_size=128,
         model=net,
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
