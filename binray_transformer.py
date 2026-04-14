@@ -358,7 +358,7 @@ def train_xor_main(run_id="", epoch=100):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4,0.5,0.5),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4,0.4,0.5),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -370,9 +370,6 @@ def train_xor_main(run_id="", epoch=100):
     ckpt = trainer.train()
     plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
-
-import sys
-import io
 
 def run_train_xor_main_sequential():
     print("Running train_xor_main 3 times sequentially...")

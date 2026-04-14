@@ -75,3 +75,9 @@ Current test similar to experiment 6,but with no grad scalar,Making.
 ![](./no_scale1.png)
 ![](./no_scale2.png)
 ![](./no_scale3.png)
+
+## Experiment 8:
+Because I previously find out grad_scalar really works great,I am gonna keep it in for the rest of the project,
+Current test was doing if is comparred to regularization 2 if regularization 1 is decreased,So say (0.4,0.5),Will the training go bad,My previous research said it will,Now I am checking anew.Got better result.
+
+![](./small_reg_1.png)
