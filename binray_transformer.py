@@ -334,7 +334,7 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
-def train_xor_main():
+def train_xor_main(run_id="", epoch=100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -350,9 +350,9 @@ def train_xor_main():
         max_threshold=0.95,
         grad_scalar=True,
     )        
-    trainer = Trainer(
+        trainer = Trainer(
             dataset=(x_train, y_train),
-            stop_on=stop_on_epoch(200),
+            stop_on=stop_on_epoch(epoch),
             batch_size=64,
             model=net,
             loss_fn=nn.MSELoss(),
@@ -368,11 +368,50 @@ def train_xor_main():
             peek=net.peek,
         )
     ckpt = trainer.train()
-    plot_training_loss(ckpt.avg_errors())
+    plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
 
+import concurrent.futures
+import sys
+import contextlib
+import io
+
+def _run_captured(run_id):
+    f = io.StringIO()
+    with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+        print(f"========== STARTING RUN {run_id} ==========")
+        try:
+            res = train_xor_main(run_id=run_id)
+            print(f"========== COMPLETED RUN {run_id} ==========")
+        except Exception as e:
+            print(f"========== FAILED RUN {run_id}: {e} ==========")
+            res = None
+    return run_id, f.getvalue(), res
+
+def run_train_xor_main_parallel():
+    print("Running train_xor_main 3 times in parallel...")
+    results = []
+    
+    # ProcessPoolExecutor gives true parallelism and separate memory spaces
+    with concurrent.futures.ProcessPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(_run_captured, i + 1): i for i in range(3)}
+        
+        for future in concurrent.futures.as_completed(futures):
+            run_id, output, res = future.result()
+            
+            # Print the entire collected output for this run all at once
+            print(output)
+            
+            if res is not None:
+                results.append(res)
+                print(f"Run {run_id}/3 finished successfully.\n")
+            else:
+                print(f"Run {run_id}/3 generated an exception.\n")
+                
+    return results
+
 def main():
-    train_xor_extend_layer()
+    run_train_xor_main_parallel()
 if __name__ == "__main__":
     main()
 

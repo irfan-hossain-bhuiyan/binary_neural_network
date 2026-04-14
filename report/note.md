@@ -19,7 +19,7 @@ Newly Initialized model.
 1. Currently I have initialization for having mean =1 for even layer,and mean =0 for odd layer,I am now testing how much regularization helps in here.
 2. had MSE error
 3. I had a batch size of 256,Higher than 128
-4. use adam optimizer,with default learning rate,Because I think low learning rate 
+4. use adam optimizer,with default learning rate,Because I think low learning rate works best.
 3. Their is a balance on what regulairzation works better.Here 0.05 works the best.
 ![](./regularization_test.png)
 4. So I think using differnet loss function will influence the result differently
@@ -55,4 +55,16 @@ regularization=0.1,also I reduced the batch size on this one,I don't know if hug
 ![](./mse_more_layer.png)
 
 Still it wasn't better,Let's remove the scale_grad and see the result.
-## Experiment 6:
+## Experiment 6: 
+Ok having 
+1. grad_scalar=True,
+2. higher layer (256, 128, 64,128,64 ,32),
+3. and higher regularization (0.5,0.5,0.5) 
+4. MSE error,
+5.
+I have made the model learn much better.
+Given I have kept the default optimizer settigns,
+![](./)
+
+result:As it turns out the this approach has a lot of plataued values. Some time the result is not good as expected.
+

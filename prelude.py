@@ -488,11 +488,13 @@ def merge_checkpoints(ckpt1: Checkpoint, ckpt2: Checkpoint) -> Checkpoint:
 # VISUALIZATION
 # ══════════════════════════════════════════════
 
-def plot_training_loss(loss_history: List[float]) -> None:
+def plot_training_loss(loss_history: List[float], header: str = "") -> None:
     import matplotlib.pyplot as plt
     plt.figure(figsize=(6, 4))
     plt.plot(range(1, len(loss_history) + 1), loss_history, color="tomato", linewidth=2)
-    plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.title("Training Loss")
+    plt.xlabel("Epoch"); plt.ylabel("Loss")
+    title_str = f"Training Loss - {header}" if header else "Training Loss"
+    plt.title(title_str)
     plt.grid(alpha=0.3); plt.tight_layout(); plt.show()
 
 
