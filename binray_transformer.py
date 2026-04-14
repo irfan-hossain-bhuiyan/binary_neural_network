@@ -372,6 +372,7 @@ def train_xor_main(run_id="", epoch=100):
     return ckpt
 
 import concurrent.futures
+import multiprocessing as mp
 import sys
 import contextlib
 import io
@@ -392,8 +393,10 @@ def run_train_xor_main_parallel():
     print("Running train_xor_main 3 times in parallel...")
     results = []
     
-    # ProcessPoolExecutor gives true parallelism and separate memory spaces
-    with concurrent.futures.ProcessPoolExecutor(max_workers=3) as executor:
+    # ProcessPoolExecutor gives true parallelism and separate memory spaces.
+    # We must use the 'spawn' context to avoid CUDA re-initialization errors on Linux.
+    ctx = mp.get_context('spawn')
+    with concurrent.futures.ProcessPoolExecutor(max_workers=3, mp_context=ctx) as executor:
         futures = {executor.submit(_run_captured, i + 1): i for i in range(3)}
         
         for future in concurrent.futures.as_completed(futures):
