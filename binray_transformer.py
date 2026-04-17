@@ -176,12 +176,8 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True,error_scaler_on_platau:None|float=None):
-        error_scale=1
-        def regularization(module:"MultiLayerLogicGateNet",state:TrainerState):
-            nonlocal error_scale
-            if error_scaler_on_platau is not None:
-                if state.is_plateaued: error_scale*=error_scaler_on_platau
+    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):
+        def regularization(module:"MultiLayerLogicGateNet"):
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -196,7 +192,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau_err = torch.exp(-layer.tau)
                 reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
                 # Encourage tau to grow larger (L1 regularization, negative sign)
-            return reg*error_scale
+            return reg
         def close_to_discrete(module:Any):
             reg = torch.tensor(0.0, device=DEVICE)
             for layer in module.expectation_layers:
@@ -208,7 +204,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 disc_error=disc_error_w+disc_error_b
                 tau_err = torch.exp(-layer.tau)
                 reg+=disc_lambda*disc_error+tau_lambda*tau_err
-            return reg*random.rand()
+            return reg
         if default:return regularization
         else:return close_to_discrete
     def set_use_softmax(self,value:bool):
@@ -359,7 +355,7 @@ def train_xor_main(r1_scale, epoch=40, run_id=""):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,0.5,0.5),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,tau_lambda=0.5,default=False),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -377,10 +373,10 @@ def run_train_xor_main_parallel():
     import concurrent.futures
     results = []
     
-    scales = [0.2, 0.5, 0.7, 1.0]
+    scales = [0.01, 0.1, 0.5, 1]
     
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        future_to_r1 = {executor.submit(train_xor_main, r1_scale, f"r1_scale={r1_scale}", 60): r1_scale for r1_scale in scales}
+        future_to_r1 = {executor.submit(train_xor_main, r1_scale ,60, f"r1_scale={r1_scale}",): r1_scale for r1_scale in scales}
         for future in concurrent.futures.as_completed(future_to_r1):
             r1_scale = future_to_r1[future]
             try:
