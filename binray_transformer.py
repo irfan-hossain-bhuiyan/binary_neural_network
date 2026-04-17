@@ -330,8 +330,11 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
-def train_xor_main(r1_scale, epoch=40, run_id=""):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
+    if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
+        device = torch.device(f"cuda:{device_id}")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
         save_xor_dataset(dataset_path, num_samples=100000)
@@ -371,12 +374,18 @@ def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
     import concurrent.futures
     import matplotlib.pyplot as plt
+    import torch
     results = []
     
     scales = [0.01, 0.1, 0.5, 1]
+    num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_r1 = {executor.submit(train_xor_main, r1_scale ,60, f"r1_scale={r1_scale}",): r1_scale for r1_scale in scales}
+        future_to_r1 = {}
+        for idx, r1_scale in enumerate(scales):
+            dev_id = idx % num_gpus
+            future_to_r1[executor.submit(train_xor_main, r1_scale, 60, f"r1_scale={r1_scale}", dev_id)] = r1_scale
+            
         for future in concurrent.futures.as_completed(future_to_r1):
             r1_scale = future_to_r1[future]
             try:
