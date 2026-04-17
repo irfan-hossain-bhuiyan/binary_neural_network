@@ -95,3 +95,5 @@ It came to the position it was before.,
 ## Experiment 10:
  
 Wanna see if I increase reg_1,Will it get as much performance.
+
+![](./r1_increase.png)

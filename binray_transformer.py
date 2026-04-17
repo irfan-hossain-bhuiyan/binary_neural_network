@@ -381,7 +381,7 @@ def run_train_xor_main_sequential():
     for r1_scale in scales:
         print(f"\n========== STARTING RUN WITH r1_scale={r1_scale} ==========")
         try:
-            res = train_xor_main(r1_scale=r1_scale, run_id=f"r1_scale={r1_scale}")
+            res = train_xor_main(r1_scale=r1_scale, run_id=f"r1_scale={r1_scale}",epoch=60)
             results.append((r1_scale, res))
             print(f"========== COMPLETED RUN WITH r1_scale={r1_scale} ==========")
         except Exception as e:
