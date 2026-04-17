@@ -178,7 +178,7 @@ class MultiLayerLogicGateNet(nn.Module):
 
     def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):
         def regularization(module:"MultiLayerLogicGateNet"):
-            reg = torch.tensor(0.0, device=DEVICE)
+            reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
                 w = layer.weight
@@ -194,7 +194,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 # Encourage tau to grow larger (L1 regularization, negative sign)
             return reg
         def close_to_discrete(module:Any):
-            reg = torch.tensor(0.0, device=DEVICE)
+            reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
                 w = layer.weight
