@@ -369,15 +369,13 @@ def train_xor_main(r1_scale, epoch=40, run_id=""):
     return ckpt
 def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
-    import multiprocessing as mp
     import concurrent.futures
     import matplotlib.pyplot as plt
     results = []
     
     scales = [0.01, 0.1, 0.5, 1]
     
-    ctx = mp.get_context('spawn')
-    with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
+    with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_r1 = {executor.submit(train_xor_main, r1_scale ,60, f"r1_scale={r1_scale}",): r1_scale for r1_scale in scales}
         for future in concurrent.futures.as_completed(future_to_r1):
             r1_scale = future_to_r1[future]
