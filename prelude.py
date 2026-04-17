@@ -785,7 +785,7 @@ class Trainer:
     state:                      Any                                    = field(default_factory=TrainerState)
 
     # ------------------------------------------------------------------
-    def train(self) -> Checkpoint:
+    def train(self, print_terminal: bool = True) -> Checkpoint:
         self.model = self.model.to(self.device)
         unwrapped_model = getattr(self.model, "module", self.model)
 
@@ -853,17 +853,18 @@ class Trainer:
                 self.state.update(epoch, avg_loss, avg_error, avg_reg)
 
             # ── Console logging ────────────────────────────────────────
-            peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
-            CONSOLE.print(
-                f"Epoch [bold]{epoch:04d}[/bold] | "
-                f"loss = [red]{avg_loss:.6f}[/red] | "
-                f"error = [yellow]{avg_error:.6f}[/yellow] | "
-                f"reg = {avg_reg:.6f}"
-                + peek_str
-            )
+            if print_terminal:
+                peek_str = (" | " + _format_peek(self.peek())) if self.peek is not None else ""
+                CONSOLE.print(
+                    f"Epoch [bold]{epoch:04d}[/bold] | "
+                    f"loss = [red]{avg_loss:.6f}[/red] | "
+                    f"error = [yellow]{avg_error:.6f}[/yellow] | "
+                    f"reg = {avg_reg:.6f}"
+                    + peek_str
+                )
 
-            if self.check_grad:
-                _print_grad_table(avg_stats)
+                if self.check_grad:
+                    _print_grad_table(avg_stats)
             
             # ── LR scheduler ───────────────────────────────────────────
             if scheduler is not None:

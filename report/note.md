@@ -97,3 +97,5 @@ It came to the position it was before.,
 Wanna see if I increase reg_1,Will it get as much performance.
 
 ![](./r1_increase.png)
+![](./r1_increase2.png)
+The test always gives that having r1,r2 regularization is the way to go.

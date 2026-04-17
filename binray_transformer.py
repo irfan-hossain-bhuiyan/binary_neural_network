@@ -368,28 +368,32 @@ def train_xor_main(r1_scale, epoch=40, run_id=""):
         state=TrainerState(50),
         peek=net.peek,
     )
-    ckpt = trainer.train()
-    plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
+    ckpt = trainer.train(print_terminal=False)
+    # plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
-def run_train_xor_main_sequential():
-    print("Running train_xor_main sequentially across different r1_scales...")
+def run_train_xor_main_parallel():
+    print("Running train_xor_main in parallel across different r1_scales...")
     import matplotlib.pyplot as plt
+    import concurrent.futures
     results = []
     
     scales = [0.2, 0.5, 0.7, 1.0]
     
-    for r1_scale in scales:
-        print(f"\n========== STARTING RUN WITH r1_scale={r1_scale} ==========")
-        try:
-            res = train_xor_main(r1_scale=r1_scale, run_id=f"r1_scale={r1_scale}",epoch=60)
-            results.append((r1_scale, res))
-            print(f"========== COMPLETED RUN WITH r1_scale={r1_scale} ==========")
-        except Exception as e:
-            print(f"========== FAILED RUN WITH r1_scale={r1_scale}: {e} ==========")
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        future_to_r1 = {executor.submit(train_xor_main, r1_scale, f"r1_scale={r1_scale}", 60): r1_scale for r1_scale in scales}
+        for future in concurrent.futures.as_completed(future_to_r1):
+            r1_scale = future_to_r1[future]
+            try:
+                res = future.result()
+                results.append((r1_scale, res))
+                print(f"========== COMPLETED RUN WITH r1_scale={r1_scale} ==========")
+            except Exception as e:
+                print(f"========== FAILED RUN WITH r1_scale={r1_scale}: {e} ==========")
             
     # Plot all results at the end
     if results:
         plt.figure(figsize=(10, 6))
+        results.sort(key=lambda x: x[0])
         for r1, ckpt in results:
             errors = ckpt.avg_errors()
             plt.plot(range(1, len(errors) + 1), errors, label=f"r1_scale = {r1}", linewidth=2)
@@ -405,7 +409,7 @@ def run_train_xor_main_sequential():
     return results
 
 def main():
-    run_train_xor_main_sequential()
+    run_train_xor_main_parallel()
 if __name__ == "__main__":
     main()
 
