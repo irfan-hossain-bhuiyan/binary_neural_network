@@ -167,7 +167,7 @@ class MultiLayerLogicGateNet(nn.Module):
         if load_file is not None:
             load_path = Path(load_file) if isinstance(load_file, str) else load_file
             if load_path.exists():
-                self.load_state_dict(torch.load(load_path, weights_only=True))
+                self.load_state_dict(torch.load(load_path, map_location='cpu', weights_only=True))
             else:
                 # Ensure parent directory exists
                 load_path.parent.mkdir(parents=True, exist_ok=True)
@@ -349,7 +349,7 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
         max_threshold=0.95,
         grad_scalar=True,
         load_file="default_init.pt"
-    )        
+    ).to(device)
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
