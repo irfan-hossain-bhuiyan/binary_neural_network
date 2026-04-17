@@ -349,6 +349,7 @@ def train_xor_main(r1_scale, epoch=40, run_id=""):
         use_softmax=True,
         max_threshold=0.95,
         grad_scalar=True,
+        load_file="default_init.pt"
     )        
     trainer = Trainer(
         dataset=(x_train, y_train),
@@ -401,7 +402,6 @@ def run_train_xor_main_sequential():
         plt.tight_layout()
         plt.show()
 
-    return results
     return results
 
 def main():
