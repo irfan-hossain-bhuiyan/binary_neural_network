@@ -81,3 +81,17 @@ Because I previously find out grad_scalar really works great,I am gonna keep it 
 Current test was doing if is comparred to regularization 2 if regularization 1 is decreased,So say (0.4,0.5),Will the training go bad,My previous research said it will,Now I am checking anew.Got better result.
 
 ![](./small_reg_1.png)
+![](./small_reg_2.png)
+
+It seems that regularization1 can't never be less than regularization2,I need to test what happens on same or higher.
+## Experiment 9:
+
+I keeped the reg1=0.4 and decreased reg2=0.4 so like to prove their is no effect of reg1=0.5,
+I am getting the good behiavour like before,Now I need to check if reg1>reg2 WIll their be more effect or not.
+![](./balance1.png)
+![](./balance2.png)
+It came to the position it was before.,
+
+## Experiment 10:
+ 
+Wanna see if I increase reg_1,Will it get as much performance.

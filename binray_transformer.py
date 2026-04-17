@@ -334,7 +334,7 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
-def train_xor_main(run_id="", epoch=100):
+def train_xor_main(r1_scale, epoch=40, run_id=""):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
     if not dataset_path.exists():
@@ -358,7 +358,7 @@ def train_xor_main(run_id="", epoch=100):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4,0.4,0.5),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,0.5,0.5),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -370,20 +370,38 @@ def train_xor_main(run_id="", epoch=100):
     ckpt = trainer.train()
     plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
-
 def run_train_xor_main_sequential():
-    print("Running train_xor_main 3 times sequentially...")
+    print("Running train_xor_main sequentially across different r1_scales...")
+    import matplotlib.pyplot as plt
     results = []
     
-    for i in range(1, 4):
-        print(f"\n========== STARTING RUN {i} ==========")
+    scales = [0.2, 0.5, 0.7, 1.0]
+    
+    for r1_scale in scales:
+        print(f"\n========== STARTING RUN WITH r1_scale={r1_scale} ==========")
         try:
-            res = train_xor_main(run_id=str(i))
-            results.append(res)
-            print(f"========== COMPLETED RUN {i} ==========")
+            res = train_xor_main(r1_scale=r1_scale, run_id=f"r1_scale={r1_scale}")
+            results.append((r1_scale, res))
+            print(f"========== COMPLETED RUN WITH r1_scale={r1_scale} ==========")
         except Exception as e:
-            print(f"========== FAILED RUN {i}: {e} ==========")
+            print(f"========== FAILED RUN WITH r1_scale={r1_scale}: {e} ==========")
             
+    # Plot all results at the end
+    if results:
+        plt.figure(figsize=(10, 6))
+        for r1, ckpt in results:
+            errors = ckpt.avg_errors()
+            plt.plot(range(1, len(errors) + 1), errors, label=f"r1_scale = {r1}", linewidth=2)
+            
+        plt.xlabel("Epoch")
+        plt.ylabel("Testing Error / Loss")
+        plt.title("Effect of r1_scale Regularization on Training")
+        plt.grid(alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    return results
     return results
 
 def main():
