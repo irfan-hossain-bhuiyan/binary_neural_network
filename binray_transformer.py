@@ -370,6 +370,12 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
     ckpt = trainer.train(print_terminal=False)
     # plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
+import sys
+import os
+
+# Add the directory containing this script to sys.path so multiprocessing 'spawn' can find the module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
     import concurrent.futures
