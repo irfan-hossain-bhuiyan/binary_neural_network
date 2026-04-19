@@ -95,7 +95,10 @@ It came to the position it was before.,
 ## Experiment 10:
  
 Wanna see if I increase reg_1,Will it get as much performance.
+Remember I am keeping regularization 2 constant,
+This test check what is the behiavour of reg1 if I keep reg 2 constant,Here reg2=0.5,
 
 ![](./r1_increase.png)
 ![](./r1_increase2.png)
-The test always gives that having r1,r2 regularization is the way to go.
+The test always gives that having r1=r2 regularization is the way to go.
+
