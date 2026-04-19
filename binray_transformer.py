@@ -358,7 +358,7 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,r1_scale,tau_lambda=r1_scale),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,r1_scale,tau_lambda=0.3),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -384,7 +384,7 @@ def run_train_xor_main_parallel():
     import torch
     results = []
     
-    scales = [0.1,0.5,1.0]
+    scales = [0.1,0.4,0.7,1.0]
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     
     # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
@@ -393,7 +393,7 @@ def run_train_xor_main_parallel():
         future_to_r1 = {}
         for idx, r1_scale in enumerate(scales):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main, r1_scale, 60, f"r1_scale={r1_scale}", dev_id)] = r1_scale
+            future_to_r1[executor.submit(train_xor_main, r1_scale, 100, f"r1_scale={r1_scale}", dev_id)] = r1_scale
             
         for future in concurrent.futures.as_completed(future_to_r1):
             r1_scale = future_to_r1[future]
