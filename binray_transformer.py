@@ -373,6 +373,7 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
 def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
     import concurrent.futures
+    import multiprocessing as mp
     import matplotlib.pyplot as plt
     import torch
     results = []
@@ -380,7 +381,9 @@ def run_train_xor_main_parallel():
     scales = [0.1,0.5,1.0]
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
+    ctx = mp.get_context('spawn')
+    with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
         for idx, r1_scale in enumerate(scales):
             dev_id = idx % num_gpus
