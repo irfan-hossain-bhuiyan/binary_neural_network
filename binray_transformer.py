@@ -384,7 +384,7 @@ def run_train_xor_main_parallel():
     import torch
     results = []
     
-    scales = [0.1,0.4,0.7,1.0]
+    scales = [0.4,0.5,0.6,0.7]
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     
     # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
