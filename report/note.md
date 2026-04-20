@@ -102,3 +102,10 @@ This test check what is the behiavour of reg1 if I keep reg 2 constant,Here reg2
 ![](./r1_increase2.png)
 The test always gives that having r1=r2 regularization is the way to go.
 
+## Experiment 11:
+Checked which regularization works the best,as it turns out reg=0.5 works the best,Like always.
+![](./reg1_change.png)
+![](./reg1_change1.png)
+![](./reg1_change2.png)
+## Idea:
+We need more idea,one approach is 

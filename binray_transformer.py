@@ -177,7 +177,8 @@ class MultiLayerLogicGateNet(nn.Module):
         return copy.deepcopy(self)
 
     def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):
-        def regularization(module:"MultiLayerLogicGateNet"):
+        current_scalar=1.0
+        def regularization(module:"MultiLayerLogicGateNet", epoch: int, avg_loss: float, avg_error: float):
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -192,7 +193,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau_err = torch.exp(-layer.tau)
                 reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
                 # Encourage tau to grow larger (L1 regularization, negative sign)
-            return reg
+            return current_scalar*reg
         def close_to_discrete(module:Any):
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
