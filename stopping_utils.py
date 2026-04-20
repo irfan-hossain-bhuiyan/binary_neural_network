@@ -4,34 +4,31 @@ import torch.nn as nn
 from trainer_utils import CONSOLE
 
 class PlateauTracker:
-    """Independent plateau tracker that components like schedulers or stoppers can use to track plateauing."""
-    def __init__(self, patience: int = 10, loss_min_delta: float = 1e-4, error_min_delta: float = 1e-3):
+    """Independent plateau tracker for a single metric that prevents multiple updates per epoch."""
+    def __init__(self, patience: int = 10, min_delta: float = 1e-4):
         self.patience = patience
-        self.loss_min_delta = loss_min_delta
-        self.error_min_delta = error_min_delta
+        self.min_delta = min_delta
         self.reset()
 
     def reset(self) -> None:
-        self.best_loss = float("inf")
-        self.best_error = float("inf")
-        self.loss_no_improve = 0
-        self.error_no_improve = 0
+        self.best_value = float("inf")
+        self.no_improve = 0
+        self.last_epoch = -1
 
-    def update(self, avg_loss: float, avg_error: float) -> bool:
-        """Returns True if a plateau is detected, and resets the tracker."""
-        if avg_loss < self.best_loss - self.loss_min_delta:
-            self.best_loss = avg_loss
-            self.loss_no_improve = 0
-        else:
-            self.loss_no_improve += 1
+    def update(self, epoch: int, value: float) -> bool:
+        """Returns True if a plateau is detected, and resets the tracker. Ignores redundant calls in the same epoch."""
+        if epoch == self.last_epoch:
+            return False
             
-        if avg_error < self.best_error - self.error_min_delta:
-            self.best_error = avg_error
-            self.error_no_improve = 0
+        self.last_epoch = epoch
+        
+        if value < self.best_value - self.min_delta:
+            self.best_value = value
+            self.no_improve = 0
         else:
-            self.error_no_improve += 1
+            self.no_improve += 1
             
-        if self.loss_no_improve >= self.patience or self.error_no_improve >= self.patience:
+        if self.no_improve >= self.patience:
             self.reset()
             return True
         return False
@@ -39,11 +36,11 @@ class PlateauTracker:
 
 def early_stopping(max_epochs: int = 500, patience: int = 10) -> Callable[..., bool]:
     """
-    Factory: plateau-based stopping.
+    Factory: plateau-based stopping tracking only the error.
     """
-    tracker = PlateauTracker(patience=patience)
-    def callback(epoch: int, avg_loss: float, avg_error: float) -> bool:
-        return tracker.update(avg_loss, avg_error) or epoch >= max_epochs
+    tracker = PlateauTracker(patience=patience, min_delta=1e-3)
+    def callback(epoch: int, avg_error: float) -> bool:
+        return tracker.update(epoch, avg_error) or epoch >= max_epochs
 
     return callback
 
@@ -57,14 +54,14 @@ def stop_on_epoch(max_epochs: int) -> Callable[..., bool]:
 
 class FnCallOnPlateau:
     """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
-    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer, func: Callable[[nn.Module]], patience: int = 10):
+    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer, func: Callable[[nn.Module]], patience: int = 10, min_delta: float = 1e-4):
         self.model = model
         self.optimizer = optimizer
         self.func = func
-        self.tracker = PlateauTracker(patience=patience)
+        self.tracker = PlateauTracker(patience=patience, min_delta=min_delta)
 
-    def step(self, epoch: int, avg_loss: float, avg_error: float):
-        if self.tracker.update(avg_loss, avg_error):
+    def step(self, epoch: int, avg_loss: float):
+        if self.tracker.update(epoch, avg_loss):
             CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {epoch}): Discretizing model[/bold yellow]")
             self.func(self.model)
             # Reset the optimizer state since the model has changed
@@ -79,7 +76,7 @@ def fn_call_on_plateau_scheduler(
     """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
     def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
         return FnCallOnPlateau(
-            model=model, optimizer=optimizer, func=fn, patience=patience
+            model=model, optimizer=optimizer, func=fn, patience=patience, min_delta=min_delta
         )
     return factory
 
