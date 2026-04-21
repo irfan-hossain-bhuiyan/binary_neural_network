@@ -375,7 +375,7 @@ def run_train_xor_main_parallel():
     
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     def normal_init(mean):
-            return lambda x:normal_(x,mean=mean)
+            return lambda x:nn.init.normal_(x,mean=mean)
 
     # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
     ctx = mp.get_context('spawn')
