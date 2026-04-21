@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
+from torch.nn.init import normal_
 from torch.optim import Adam, RAdam
 from prelude import DEVICE, TrainerState,  leaky_clamp, Trainer, plot_training_loss, split_dataset, stop_on_epoch
 from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
@@ -331,7 +332,7 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
-def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
+def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
     if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
         device = torch.device(f"cuda:{device_id}")
     else:
@@ -349,7 +350,8 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
         use_softmax=True,
         max_threshold=0.95,
         grad_scalar=True,
-        load_file="default_init.pt"
+        odd_initialization=odd_init,
+        even_initialization=even_init
     ).to(device)
     trainer = Trainer(
         dataset=(x_train, y_train),
@@ -359,7 +361,7 @@ def train_xor_main(r1_scale, epoch=40, run_id="", device_id=0):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(r1_scale,r1_scale,tau_lambda=0.3),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4,0.4,tau_lambda=0.3),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -385,33 +387,34 @@ def run_train_xor_main_parallel():
     import torch
     results = []
     
-    scales = [0.4,0.5,0.6,0.7]
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-    
+    def normal_init(mean):
+            return lambda x:normal_(x,mean=mean)
+
     # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx, r1_scale in enumerate(scales):
+        for idx,(odd_init,even_init) in enumerate([(0.0,0.0),(0.0,1.0),(1.0,0.0),(1.0,1.0)]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main, r1_scale, 100, f"r1_scale={r1_scale}", dev_id)] = r1_scale
+            future_to_r1[executor.submit(train_xor_main,normal_init(mean=odd_init),normal_init(mean=even_init), 100, dev_id)] = (odd_init,even_init)
             
         for future in concurrent.futures.as_completed(future_to_r1):
-            r1_scale = future_to_r1[future]
+            odd_even = future_to_r1[future]
             try:
                 res = future.result()
-                results.append((r1_scale, res))
-                print(f"========== COMPLETED RUN WITH r1_scale={r1_scale} ==========")
+                results.append((odd_even, res))
+                print(f"========== COMPLETED RUN WITH odd,even={odd_even} ==========")
             except Exception as e:
-                print(f"========== FAILED RUN WITH r1_scale={r1_scale}: {e} ==========")
+                print(f"========== FAILED RUN WITH r1_scale={odd_even}: {e} ==========")
             
     # Plot all results at the end
     if results:
         plt.figure(figsize=(10, 6))
         results.sort(key=lambda x: x[0])
-        for r1, ckpt in results:
+        for odd_even, ckpt in results:
             errors = ckpt.avg_errors()
-            plt.plot(range(1, len(errors) + 1), errors, label=f"r1_scale = {r1}", linewidth=2)
+            plt.plot(range(1, len(errors) + 1), errors, label=f"odd_even = {odd_even}", linewidth=2)
             
         plt.xlabel("Epoch")
         plt.ylabel("Testing Error / Loss")

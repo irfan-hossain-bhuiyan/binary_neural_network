@@ -54,7 +54,7 @@ def stop_on_epoch(max_epochs: int) -> Callable[..., bool]:
 
 class FnCallOnPlateau:
     """Custom scheduler that calls model.discretize() when plateauing, without changing LR."""
-    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer, func: Callable[[nn.Module]], patience: int = 10, min_delta: float = 1e-4):
+    def __init__(self, model: nn.Module, optimizer: torch.optim.Optimizer, func: Callable[[nn.Module], None], patience: int = 10, min_delta: float = 1e-4):
         self.model = model
         self.optimizer = optimizer
         self.func = func
