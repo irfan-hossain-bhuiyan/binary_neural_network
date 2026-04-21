@@ -365,6 +365,13 @@ import os
 # Add the directory containing this script to sys.path so multiprocessing 'spawn' can find the module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+class NormalInitWrapper:
+    def __init__(self, mean: float):
+        self.mean = mean
+    def __call__(self, tensor: torch.Tensor):
+        import torch.nn as nn
+        return nn.init.normal_(tensor, mean=self.mean)
+
 def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
     import concurrent.futures
@@ -374,8 +381,6 @@ def run_train_xor_main_parallel():
     results = []
     
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-    def normal_init(mean):
-            return lambda x:nn.init.normal_(x,mean=mean)
 
     # Using ProcessPoolExecutor with 'spawn' is necessary for PyTorch CUDA multiprocessing
     ctx = mp.get_context('spawn')
@@ -383,7 +388,7 @@ def run_train_xor_main_parallel():
         future_to_r1 = {}
         for idx,(odd_init,even_init) in enumerate([(0.0,0.0),(0.0,1.0),(1.0,0.0),(1.0,1.0)]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,normal_init(mean=odd_init),normal_init(mean=even_init), 100, dev_id)] = (odd_init,even_init)
+            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(odd_init),NormalInitWrapper(even_init), 100, dev_id)] = (odd_init,even_init)
             
         for future in concurrent.futures.as_completed(future_to_r1):
             odd_even = future_to_r1[future]
@@ -413,7 +418,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    run_train_xor_main_parallel()
+    train_xor_main(NormalInitWrapper(0.0),NormalInitWrapper(0.0), 100)
 if __name__ == "__main__":
     main()
 
