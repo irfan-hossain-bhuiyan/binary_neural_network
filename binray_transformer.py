@@ -1,16 +1,15 @@
 from math import log
 import copy
-from numpy import random
 import torch
-from torch._prims_common import Tensor
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
 from torch.nn.init import normal_
-from torch.optim import Adam, RAdam
-from prelude import DEVICE, TrainerState,  leaky_clamp, Trainer, plot_training_loss, split_dataset, stop_on_epoch
-from data_utils import load_mnist, save_xor_dataset, load_xor_dataset
+from torch.optim import Adam
+from prelude import leaky_clamp, Trainer, split_dataset, stop_on_epoch
+from data_utils import save_xor_dataset, load_xor_dataset
 
 def xor(a:Tensor,b:Tensor)->torch.Tensor:
     return a+b-2*a*b
@@ -177,9 +176,10 @@ class MultiLayerLogicGateNet(nn.Module):
     def clone(self):
         return copy.deepcopy(self)
 
-    def regularization_factory(l1_lambda=1e-1, disc_lambda=1e-1, tau_lambda=1e-1,default:bool=True):
+    @staticmethod
+    def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, default: bool=True):
         current_scalar=1.0
-        def regularization(module:"MultiLayerLogicGateNet", epoch: int, avg_loss: float, avg_error: float):
+        def regularization(module: Any) -> Tensor:
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -226,6 +226,7 @@ class MultiLayerLogicGateNet(nn.Module):
                     result[f"tau_{i}"] = layer.tau.mean().item() if layer.tau.numel() > 1 else layer.tau.item()
         return result
 
+    @staticmethod
     def constraint(module:Any):
         for layer in module.expectation_layers:
             layer = cast(OrNorGateLayer, layer)
@@ -241,30 +242,17 @@ class MultiLayerLogicGateNet(nn.Module):
             return first_layer.tau
         return [cast(OrNorGateLayer, layer).tau for layer in self.expectation_layers]
 
+    @staticmethod
     def discretize(module:Any, threshold: float=0.5) -> None:
         for layer in module.expectation_layers:
             layer = cast(OrNorGateLayer, layer)
             layer.discretize(threshold)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for idx, layer in enumerate(self.expectation_layers):
+        for layer in self.expectation_layers:
             x = layer(x)
         return x
 
-def train_mnist():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset_path = Path("artifacts/mnist_binary.pt")
-    x_all, y_all = load_mnist(dataset_path, device=device, input_flatten=True)
-    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
-    
-    # Base network to clone from, ensuring all models start with the same exact weights
-    base_net = MultiLayerLogicGateNet(
-        input_dim=784,
-        layer_dims=(128,64,128,64, 128, 4),
-        use_softmax=True,
-    )
-    
-    
 def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset_path = Path("artifacts/xor_dataset.pt")
@@ -310,7 +298,6 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
             checkpoint_path=None, # Don't overwrite for each run
             device=device,
             check_grad=False, # Turned off to reduce console spam for 4 runs
-            state=TrainerState(50),
             peek=net.peek,
         )
         ckpt = trainer.train()
@@ -361,13 +348,12 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4,0.4,tau_lambda=0.3),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4, 0.4, tau_lambda=0.3),
         lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
         check_grad=False, # Turned off to reduce console spam for 4 runs
-        state=TrainerState(50),
         peek=net.peek,
     )
     ckpt = trainer.train(print_terminal=False)

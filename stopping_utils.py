@@ -69,7 +69,7 @@ class FnCallOnPlateau:
             self.optimizer.state = defaultdict(dict)
 
 def fn_call_on_plateau_scheduler(
-    fn: Callable[[nn.Module]],
+    fn: Callable[[nn.Module], None],
     patience: int = 10,
     min_delta: float = 1e-4,
 ) -> Callable[[nn.Module, torch.optim.Optimizer], FnCallOnPlateau]:
