@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 from typing import Any, Callable, cast
-from torch.nn.init import normal_
 from torch.optim import Adam
 from plot_utils import plot_training_loss, plot_weight_distribution
 from prelude import leaky_clamp, Trainer, split_dataset, stop_on_epoch
@@ -206,18 +205,6 @@ class MultiLayerLogicGateNet(nn.Module):
                 reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
                 # Encourage tau to grow larger (L1 regularization, negative sign)
             return reg
-        def close_to_discrete(module:Any):
-            reg = torch.tensor(0.0, device=next(module.parameters()).device)
-            for layer in module.expectation_layers:
-                layer = cast(OrNorGateLayer, layer)
-                w = layer.weight
-                b = layer.bias
-                disc_error_w = (0.5-(w-0.5).abs()).abs().mean()
-                disc_error_b = (0.5-(b-0.5).abs()).abs().mean()
-                disc_error=disc_error_w+disc_error_b
-                tau_err = torch.exp(-layer.tau)
-                reg+=disc_lambda*disc_error+tau_lambda*tau_err
-            return reg
         return regularization
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
@@ -329,7 +316,7 @@ def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
 
     return checkpoints
 
-def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
+def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
     if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
         device = torch.device(f"cuda:{device_id}")
     else:
@@ -347,8 +334,9 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         use_softmax=True,
         max_threshold=0.95,
         grad_scalar=True,
-        odd_initialization=odd_init,
-        even_initialization=even_init
+        odd_initialization=NormalInitWrapper(0.0),
+        even_initialization=NormalInitWrapper(1.0),
+        bias_initialization=bias_initizalizer
     ).to(device)
     trainer = Trainer(
         dataset=(x_train, y_train),
@@ -367,7 +355,7 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         peek=net.peek,
 
     )
-    ckpt = trainer.train(print_terminal=True)
+    ckpt = trainer.train(print_terminal=False)
     plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     plot_weight_distribution(ckpt.model)
     return ckpt
@@ -402,17 +390,17 @@ def run_train_xor_main_parallel():
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx in range(4):
+        for idx,bias in enumerate([0.0,0.5,1.0]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(0.0),NormalInitWrapper(1.0), 150, dev_id)] = idx           
+            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(bias), 150, dev_id)] = bias          
         for future in concurrent.futures.as_completed(future_to_r1):
-            idx = future_to_r1[future]
+            bias = future_to_r1[future]
             try:
                 res = future.result()
-                results.append((idx, res))
-                print(f"========== COMPLETED RUN WITH odd,even={idx} ==========")
+                results.append((bias, res))
+                print(f"========== COMPLETED RUN WITH bias={bias} ==========")
             except Exception as e:
-                print(f"========== FAILED RUN WITH r1_scale={idx}: {e} ==========")
+                print(f"========== FAILED RUN WITH bias={bias}: {e} ==========")
             
     # Plot all results at the end
     if results:
@@ -433,7 +421,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    return train_xor_main(NormalInitWrapper(0.0),NormalInitWrapper(1.0), 100)
+    return train_xor_main(NormalInitWrapper(0.0), 100)
 if __name__ == "__main__":
     main()
 
