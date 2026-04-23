@@ -367,7 +367,7 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         peek=net.peek,
 
     )
-    ckpt = trainer.train(print_terminal=False)
+    ckpt = trainer.train(print_terminal=True)
     plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     plot_weight_distribution(ckpt.model)
     return ckpt
