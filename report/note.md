@@ -121,3 +121,7 @@ But there might be a sweet spot,Like If I have odd_even=(0.5,0.5) normal distrib
 
 Epoch 0099 | loss = 0.469072 | error = 0.347975 | reg = 0.302760 | tau_0 = 13.096493 | tau_1 = 19.820488 | tau_2 = 
 8.476036 | tau_3 = 9.336477 | tau_4 = 8.504196 | tau_5 = 7.956133
+
+## Experiment 13: 
+Changed the regularization,where it toggles when the training platuaed,Got good result
+![](./with_random_regularization.png)

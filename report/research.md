@@ -23,3 +23,7 @@ Like neural network given enough depth and width we can mimic any logical relati
 We will map the gate in a continious domain
 $x_i \and w_i=x_i*w_i$ and or gate will be softmax(z*tau)*z to get the expected max,$tau=1/temprature$ and tau is encouraged to grow.
 and b is beta make if the or gate should passed with not gate.
+
+
+ # Read
+How it differs from Zimmer and Chen. The text you quoted draws a precise distinction: Zimmer and Chen learn which nodes are wired together (connectivity)
