@@ -399,26 +399,25 @@ def run_train_xor_main_parallel():
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx,(odd_init,even_init) in enumerate([(0.0,0.0),(0.0,1.0),(1.0,0.0),(1.0,1.0)]):
+        for idx in range(4):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(odd_init),NormalInitWrapper(even_init), 100, dev_id)] = (odd_init,even_init)
-            
+            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(0.0),NormalInitWrapper(1.0), 150, dev_id)] = idx           
         for future in concurrent.futures.as_completed(future_to_r1):
-            odd_even = future_to_r1[future]
+            idx = future_to_r1[future]
             try:
                 res = future.result()
-                results.append((odd_even, res))
-                print(f"========== COMPLETED RUN WITH odd,even={odd_even} ==========")
+                results.append((idx, res))
+                print(f"========== COMPLETED RUN WITH odd,even={idx} ==========")
             except Exception as e:
-                print(f"========== FAILED RUN WITH r1_scale={odd_even}: {e} ==========")
+                print(f"========== FAILED RUN WITH r1_scale={idx}: {e} ==========")
             
     # Plot all results at the end
     if results:
         plt.figure(figsize=(10, 6))
         results.sort(key=lambda x: x[0])
-        for odd_even, ckpt in results:
+        for idx, ckpt in results:
             errors = ckpt.avg_errors()
-            plt.plot(range(1, len(errors) + 1), errors, label=f"odd_even = {odd_even}", linewidth=2)
+            plt.plot(range(1, len(errors) + 1), errors, label=f"odd_even = {idx}", linewidth=2)
             
         plt.xlabel("Epoch")
         plt.ylabel("Testing Error / Loss")
