@@ -355,8 +355,9 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         device=device,
         check_grad=False, # Turned off to reduce console spam for 4 runs
         peek=net.peek,
+
     )
-    ckpt = trainer.train(print_terminal=False)
+    ckpt = trainer.train(print_terminal=True)
     # plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
     return ckpt
 import sys
