@@ -180,13 +180,15 @@ class MultiLayerLogicGateNet(nn.Module):
 
     @staticmethod
     def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01):
-        current_scalar=1.0
+        is_regularization=True
         platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
-            nonlocal current_scalar
+            nonlocal is_regularization
             if platua_check.update(epoch,avg_error):
-                current_scalar=1-current_scalar
-                print(f"Platau found,regularization toggled.current_scalar:{current_scalar}")
+                is_regularization=not is_regularization
+                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            if not is_regularization:
+                return torch.tensor(0.0)
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -201,7 +203,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau_err = torch.exp(-layer.tau)
                 reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
                 # Encourage tau to grow larger (L1 regularization, negative sign)
-            return current_scalar*reg
+            return reg
         def close_to_discrete(module:Any):
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
