@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, cast
 from torch.nn.init import normal_
 from torch.optim import Adam
+from plot_utils import plot_training_loss
 from prelude import leaky_clamp, Trainer, split_dataset, stop_on_epoch
 from data_utils import save_xor_dataset, load_xor_dataset
 
@@ -358,7 +359,7 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
 
     )
     ckpt = trainer.train(print_terminal=True)
-    # plot_training_loss(ckpt.avg_errors(), header=f"Run {run_id}" if run_id else "")
+    plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     return ckpt
 import sys
 import os
@@ -423,7 +424,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    return train_xor_main(ConstantInitWrapper(0.0),ConstantInitWrapper(1.0), 100)
+    return train_xor_main(NormalInitWrapper(0.5),NormalInitWrapper(0.5), 100)
 if __name__ == "__main__":
     main()
 

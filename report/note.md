@@ -112,5 +112,7 @@ Checked which regularization works the best,as it turns out reg=0.5 works the be
 Checked the right initialization method,It turns out odd=0,even=1 baised is the way to good
 ![](./right_init.png)
 ![](./right_init2.png)
-## Idea:
-We need more idea,one approach is 
+
+Now other than normal distribution,I changed it to constant,
+And I got really bad performace in result.
+Plot isn't working,Even with 100 epoch I got .4999 So like random choice.
