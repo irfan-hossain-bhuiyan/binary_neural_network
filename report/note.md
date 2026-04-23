@@ -107,5 +107,10 @@ Checked which regularization works the best,as it turns out reg=0.5 works the be
 ![](./reg1_change.png)
 ![](./reg1_change1.png)
 ![](./reg1_change2.png)
+
+## Experiment 12:
+Checked the right initialization method,It turns out odd=0,even=1 baised is the way to good
+![](./right_init.png)
+![](./right_init2.png)
 ## Idea:
 We need more idea,one approach is 

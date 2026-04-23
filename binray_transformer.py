@@ -371,7 +371,11 @@ class NormalInitWrapper:
     def __call__(self, tensor: torch.Tensor):
         import torch.nn as nn
         return nn.init.normal_(tensor, mean=self.mean)
-
+class ConstantInitWrapper:
+    def __init__(self,value:float):
+        self.value=value
+    def __call__(self, tensor:torch.Tensor):
+        return nn.init.ones_(tensor)*self.value
 def run_train_xor_main_parallel():
     print("Running train_xor_main in parallel across different r1_scales...")
     import concurrent.futures
@@ -418,7 +422,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    train_xor_main(NormalInitWrapper(0.0),NormalInitWrapper(0.0), 100)
+    return train_xor_main(ConstantInitWrapper(0.0),ConstantInitWrapper(1.0), 100)
 if __name__ == "__main__":
     main()
 
