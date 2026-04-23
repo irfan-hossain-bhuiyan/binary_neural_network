@@ -133,3 +133,6 @@ I guess it has high rng dependent,Like
 Epoch 0229 | loss = 0.104137 | error = 0.232825 | reg = 0.000000 | tau_0 = 6.900964 | tau_1 = 11.950079 | tau_2 = 
 14.299672 | tau_3 = 8.728804 | tau_4 = 10.289113 | tau_5 = 7.882086
 ```
+
+In long run you can see,the error just isolate in the platau.
+![](./platau_isolation.png),So maybe it doesn't have as much effect we think it has.
