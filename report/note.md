@@ -125,7 +125,8 @@ Epoch 0099 | loss = 0.469072 | error = 0.347975 | reg = 0.302760 | tau_0 = 13.09
 ## Experiment 13: 
 Changed the regularization,where it toggles when the training platuaed,Got good result
 ![](./with_random_regularization.png)
-
+Don't get good result always,
+![](./with_random_regularization2.png)
 I guess it has high rng dependent,Like 
 ```
 Epoch 0229 | loss = 0.104137 | error = 0.232825 | reg = 0.000000 | tau_0 = 6.900964 | tau_1 = 11.950079 | tau_2 = 
