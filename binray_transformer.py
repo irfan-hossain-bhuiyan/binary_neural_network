@@ -38,7 +38,8 @@ class OrNorGateLayer(nn.Module):
         max_threshold: float = 0.9,
         tau: float|nn.Parameter = 0.0,
         use_softmax: bool = False,
-        initialization: Callable[..., Any] = nn.init.normal_,
+        weight_initialization: Callable[..., Any] = nn.init.normal_,
+        bias_initialization:Callable[...,Any]=lambda x:nn.init.normal_(x,mean=0.5),
         grad_scalar:bool=False,
     ):
         super().__init__()
@@ -49,8 +50,9 @@ class OrNorGateLayer(nn.Module):
         # Compute gradient scale based on square root of the input dimension
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        self.bias = nn.Parameter(torch.ones(out_features, in_features))
-        initialization(self.weight)
+        self.bias = nn.Parameter(torch.empty(out_features, in_features))
+        weight_initialization(self.weight)
+        bias_initialization(self.bias)
         if isinstance(tau,nn.Parameter):
             self.tau_adder=tau
         else:
@@ -139,7 +141,8 @@ class MultiLayerLogicGateNet(nn.Module):
         max_threshold:float =0.95,
         use_softmax: bool = False,
         even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
-        odd_initialization:None | Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
+        odd_initialization:Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
+        bias_initialization:Callable[...,Any]=lambda x:nn.init.normal_(x,mean=0.5),
         grad_scalar:bool=False,
         load_file: str | Path | None = None,
     ):
@@ -149,8 +152,6 @@ class MultiLayerLogicGateNet(nn.Module):
         self.use_softmax = use_softmax
         self.is_shared_tau = isinstance(init_tau_param,nn.Parameter)
         self.expectation_layers: nn.ModuleList = nn.ModuleList()
-        if odd_initialization is None:
-            odd_initialization=even_initialization
         in_dim = input_dim # As the first one passes to an inverter.
         for i,out_dim in enumerate(self.layer_dims):
             initialization=even_initialization if i%2==0 else odd_initialization
@@ -160,7 +161,8 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau=init_tau_param,
                 use_softmax=use_softmax,
                 max_threshold=max_threshold,
-                initialization=initialization,
+                weight_initialization=initialization,
+                bias_initialization=bias_initialization,
                 grad_scalar=grad_scalar,
             )
             self.expectation_layers.append(layer)
@@ -238,8 +240,8 @@ class MultiLayerLogicGateNet(nn.Module):
     def constraint(module:Any):
         for layer in module.expectation_layers:
             layer = cast(OrNorGateLayer, layer)
-            layer.weight.clamp_(-10.0, 10.0)
-            layer.bias.clamp_(-10.0, 10.0)
+            layer.weight.clamp_(-5.0, 5.0)
+            layer.bias.clamp_(-5.0, 5.0)
             layer.tau_costraint(20)
 
 
@@ -361,11 +363,11 @@ def train_xor_main(odd_init,even_init, epoch=40,  device_id=0):
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
-        check_grad=True, # Turned off to reduce console spam for 4 runs
+        check_grad=False, # Turned off to reduce console spam for 4 runs
         peek=net.peek,
 
     )
-    ckpt = trainer.train(print_terminal=True)
+    ckpt = trainer.train(print_terminal=False)
     plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     plot_weight_distribution(ckpt.model)
     return ckpt

@@ -127,6 +127,7 @@ Changed the regularization,where it toggles when the training platuaed,Got good 
 ![](./with_random_regularization.png)
 Don't get good result always,
 ![](./with_random_regularization2.png)
+![](./with_random_regularization3.png)
 I guess it has high rng dependent,Like 
 ```
 Epoch 0229 | loss = 0.104137 | error = 0.232825 | reg = 0.000000 | tau_0 = 6.900964 | tau_1 = 11.950079 | tau_2 = 
