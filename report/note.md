@@ -116,3 +116,8 @@ Checked the right initialization method,It turns out odd=0,even=1 baised is the 
 Now other than normal distribution,I changed it to constant,
 And I got really bad performace in result.
 Plot isn't working,Even with 100 epoch I got .4999 So like random choice.
+
+But there might be a sweet spot,Like If I have odd_even=(0.5,0.5) normal distribution,
+
+Epoch 0099 | loss = 0.469072 | error = 0.347975 | reg = 0.302760 | tau_0 = 13.096493 | tau_1 = 19.820488 | tau_2 = 
+8.476036 | tau_3 = 9.336477 | tau_4 = 8.504196 | tau_5 = 7.956133

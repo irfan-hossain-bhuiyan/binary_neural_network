@@ -11,6 +11,7 @@ from torch.optim import Adam
 from plot_utils import plot_training_loss
 from prelude import leaky_clamp, Trainer, split_dataset, stop_on_epoch
 from data_utils import save_xor_dataset, load_xor_dataset
+from stopping_utils import PlateauTracker
 
 def xor(a:Tensor,b:Tensor)->torch.Tensor:
     return a+b-2*a*b
@@ -178,9 +179,14 @@ class MultiLayerLogicGateNet(nn.Module):
         return copy.deepcopy(self)
 
     @staticmethod
-    def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, default: bool=True):
+    def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01):
         current_scalar=1.0
-        def regularization(module: Any) -> Tensor:
+        platua_check=PlateauTracker(patience,min_err)
+        def regularization(module: Any,epoch,avg_error) -> Tensor:
+            nonlocal current_scalar
+            if platua_check.update(epoch,avg_error):
+                current_scalar=1-current_scalar
+                print(f"Platau found,regularization toggled.current_scalar:{current_scalar}")
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -208,8 +214,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 tau_err = torch.exp(-layer.tau)
                 reg+=disc_lambda*disc_error+tau_lambda*tau_err
             return reg
-        if default:return regularization
-        else:return close_to_discrete
+        return regularization
     def set_use_softmax(self,value:bool):
         for layer in self.expectation_layers:
             layer = cast(OrNorGateLayer,layer)
@@ -424,7 +429,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    return train_xor_main(NormalInitWrapper(0.5),NormalInitWrapper(0.5), 100)
+    return train_xor_main(NormalInitWrapper(0.0),NormalInitWrapper(1.0), 100)
 if __name__ == "__main__":
     main()
 
