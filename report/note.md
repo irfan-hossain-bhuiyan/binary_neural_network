@@ -140,3 +140,7 @@ In long run you can see,the error just isolate in the platau.
 ## Experiment 14:
 did the experiment with various bias,To see the effect,It turns out bias don't have much effect
 ![](./various_bias.png)
+
+## Experiment 15:
+Iterative randomization,where I switch from 0 regularization to 1 and vice versa every 10 epoch,
+![](./iterative_randomization.png)

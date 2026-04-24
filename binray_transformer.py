@@ -141,7 +141,7 @@ class MultiLayerLogicGateNet(nn.Module):
         use_softmax: bool = False,
         even_initialization: Callable[..., Any] =lambda x:nn.init.normal_(x,mean=1.0),
         odd_initialization:Callable[...,Any] =lambda x:nn.init.normal_(x,mean=0.0),
-        bias_initialization:Callable[...,Any]=lambda x:nn.init.normal_(x,mean=0.5),
+        bias_initialization:Callable[...,Any]=lambda x:nn.init.normal_(x,mean=1.0),
         grad_scalar:bool=False,
         load_file: str | Path | None = None,
     ):
@@ -246,6 +246,23 @@ class MultiLayerLogicGateNet(nn.Module):
             layer = cast(OrNorGateLayer, layer)
             layer.discretize(threshold)
 
+    def to_discrete(self, threshold: float = 0.5) -> Any:
+        from discrete_logic_net import DiscreteMultiLayerLogicGateNet
+        
+        discrete_net = DiscreteMultiLayerLogicGateNet(
+            input_dim=self.input_dim,
+            layer_dims=self.layer_dims
+        )
+        
+        for cont_layer, disc_layer in zip(self.expectation_layers, discrete_net.expectation_layers):
+            from typing import cast
+            cont_layer = cast(Any, cont_layer) # Avoid type checks assuming OrNorGateLayer
+            # Thresholding actual float weights appropriately into boolean
+            disc_layer.weight.copy_(cont_layer.actual_weight() >= threshold)
+            disc_layer.bias.copy_(cont_layer.actual_bias() >= threshold)
+            
+        return discrete_net
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.expectation_layers:
             x = layer(x)
@@ -335,8 +352,8 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         use_softmax=True,
         max_threshold=0.95,
         grad_scalar=True,
-        odd_initialization=NormalInitWrapper(0.0),
-        even_initialization=NormalInitWrapper(1.0),
+        odd_initialization=NormalInitWrapper(0.2),
+        even_initialization=NormalInitWrapper(0.8),
         bias_initialization=bias_initizalizer
     ).to(device)
     trainer = Trainer(
