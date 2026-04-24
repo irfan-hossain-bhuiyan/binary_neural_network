@@ -182,13 +182,12 @@ class MultiLayerLogicGateNet(nn.Module):
     @staticmethod
     def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01):
         is_regularization=True
-        #platua_check=PlateauTracker(patience,min_err)
+        platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
             nonlocal is_regularization
-            #if platua_check.update(epoch,avg_error):
-            #    is_regularization=not is_regularization
-            #    print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
-            is_regularization=((epoch//10)%2==0)
+            if platua_check.update(epoch,avg_error):
+                is_regularization=not is_regularization
+                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
             if not is_regularization:
                 return torch.tensor(0.0)
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
@@ -352,8 +351,8 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         use_softmax=True,
         max_threshold=0.95,
         grad_scalar=True,
-        odd_initialization=NormalInitWrapper(0.2),
-        even_initialization=NormalInitWrapper(0.8),
+        odd_initialization=NormalInitWrapper(0.0),
+        even_initialization=NormalInitWrapper(1.0),
         bias_initialization=bias_initizalizer
     ).to(device)
     from structural_pruner import prune_continuous_network
@@ -366,7 +365,7 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4, 0.4, tau_lambda=0.3),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5, 0.5, tau_lambda=0.3),
         lr_scheduler_factory=fn_call_on_plateau_scheduler(prune_continuous_network),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
@@ -375,7 +374,7 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         peek=net.peek,
 
     )
-    ckpt = trainer.train(print_terminal=False)
+    ckpt = trainer.train(print_terminal=True)
     plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     plot_weight_distribution(ckpt.model)
     return ckpt
