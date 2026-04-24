@@ -136,3 +136,7 @@ Epoch 0229 | loss = 0.104137 | error = 0.232825 | reg = 0.000000 | tau_0 = 6.900
 
 In long run you can see,the error just isolate in the platau.
 ![](./platau_isolation.png),So maybe it doesn't have as much effect we think it has.
+
+## Experiment 14:
+did the experiment with various bias,To see the effect,It turns out bias don't have much effect
+![](./various_bias.png)

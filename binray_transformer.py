@@ -182,12 +182,13 @@ class MultiLayerLogicGateNet(nn.Module):
     @staticmethod
     def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01):
         is_regularization=True
-        platua_check=PlateauTracker(patience,min_err)
+        #platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
             nonlocal is_regularization
-            if platua_check.update(epoch,avg_error):
-                is_regularization=not is_regularization
-                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            #if platua_check.update(epoch,avg_error):
+            #    is_regularization=not is_regularization
+            #    print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            is_regularization=((epoch//10)%2==0)
             if not is_regularization:
                 return torch.tensor(0.0)
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
@@ -390,7 +391,7 @@ def run_train_xor_main_parallel():
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx,bias in enumerate([0.0,0.5,1.0]):
+        for idx,bias in enumerate([1.0,1.0,1.0,1.0]):
             dev_id = idx % num_gpus
             future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(bias), 150, dev_id)] = bias          
         for future in concurrent.futures.as_completed(future_to_r1):
