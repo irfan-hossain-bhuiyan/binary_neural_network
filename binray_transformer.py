@@ -356,6 +356,8 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         even_initialization=NormalInitWrapper(0.8),
         bias_initialization=bias_initizalizer
     ).to(device)
+    from structural_pruner import prune_continuous_network
+    from stopping_utils import fn_call_on_plateau_scheduler
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
@@ -365,7 +367,7 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         optimizer_cls=Adam,
         optimizer_kwargs={},
         regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.4, 0.4, tau_lambda=0.3),
-        lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
+        lr_scheduler_factory=fn_call_on_plateau_scheduler(prune_continuous_network),
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
         device=device,

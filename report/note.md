@@ -144,3 +144,8 @@ did the experiment with various bias,To see the effect,It turns out bias don't h
 ## Experiment 15:
 Iterative randomization,where I switch from 0 regularization to 1 and vice versa every 10 epoch,
 ![](./iterative_randomization.png)
+Didn't work well.
+
+## Experiment 16:
+I have another assumption,That was If I have missed something in the initialization.
+So I made the initialization (0.2,0.8),and turns out it doesn't have any considerable effect.

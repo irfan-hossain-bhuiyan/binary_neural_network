@@ -60,8 +60,8 @@ class FnCallOnPlateau:
         self.func = func
         self.tracker = PlateauTracker(patience=patience, min_delta=min_delta)
 
-    def step(self, epoch: int, avg_loss: float):
-        if self.tracker.update(epoch, avg_loss):
+    def step(self, epoch: int, avg_error: float):
+        if self.tracker.update(epoch, avg_error):
             CONSOLE.print(f"[bold yellow]Plateau reached (Epoch {epoch}): Discretizing model[/bold yellow]")
             self.func(self.model)
             # Reset the optimizer state since the model has changed
@@ -71,7 +71,7 @@ class FnCallOnPlateau:
 def fn_call_on_plateau_scheduler(
     fn: Callable[[nn.Module], None],
     patience: int = 10,
-    min_delta: float = 1e-4,
+    min_delta: float = 1e-3,
 ) -> Callable[[nn.Module, torch.optim.Optimizer], FnCallOnPlateau]:
     """Factory: Custom plateau scheduler that discretizes the model without changing LR."""
     def factory(model: nn.Module, optimizer: torch.optim.Optimizer):
