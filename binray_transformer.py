@@ -226,8 +226,8 @@ class MultiLayerLogicGateNet(nn.Module):
                 #l1_error = w.relu().mean() 
                 #disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
                 #disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
-                disc_error_w = w.clamp(0.0,0.5)
-                disc_error_b = b.clamp(0.0,0.5)
+                disc_error_w = w.clamp(0.0,0.5).mean()
+                disc_error_b = b.clamp(0.0,0.5).mean()
                 disc_error = (disc_error_w + disc_error_b)
                 
                 tau_err = torch.exp(-layer.tau)
