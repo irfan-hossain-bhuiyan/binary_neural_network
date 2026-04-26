@@ -209,14 +209,14 @@ class MultiLayerLogicGateNet(nn.Module):
     @staticmethod
     def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01,default=True):
         is_regularization=True
-        platua_check=PlateauTracker(patience,min_err)
+        #platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
-            nonlocal is_regularization
-            if platua_check.update(epoch,avg_error):
-                is_regularization=not is_regularization
-                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
-            if not is_regularization:
-                return torch.tensor(0.0)
+            #nonlocal is_regularization
+            #if platua_check.update(epoch,avg_error):
+            #    is_regularization=not is_regularization
+            #    print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            #if not is_regularization:
+            #    return torch.tensor(0.0)
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -296,7 +296,7 @@ class MultiLayerLogicGateNet(nn.Module):
             x = layer(x)
         return x
 
-def train_xor_main(reg=0.5,epoch=40,  device_id=0):
+def train_xor_main(reg=0.5,epoch=40,  device_id=0,print_terminal=True):
     if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
         device = torch.device(f"cuda:{device_id}")
     else:
@@ -335,7 +335,7 @@ def train_xor_main(reg=0.5,epoch=40,  device_id=0):
         peek=net.peek,
 
     )
-    ckpt = trainer.train(print_terminal=True)
+    ckpt = trainer.train(print_terminal=print_terminal)
     plot_training_loss(ckpt.avg_errors(), header=f"Errors" )
     plot_weight_distribution(ckpt.model)
     return ckpt
@@ -372,7 +372,7 @@ def run_train_xor_main_parallel():
         future_to_r1 = {}
         for idx,reg in enumerate([0.1,0.25,.5,0.75]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,reg, 150, dev_id)] = reg          
+            future_to_r1[executor.submit(train_xor_main,reg, 150, dev_id,print_terminal=False)] = reg          
         for future in concurrent.futures.as_completed(future_to_r1):
             reg = future_to_r1[future]
             try:
