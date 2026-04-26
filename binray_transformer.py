@@ -178,7 +178,6 @@ class MultiLayerLogicGateNet(nn.Module):
  
     def clone(self):
         return copy.deepcopy(self)
-
     @staticmethod
     def regularization_factory(l1_lambda: float=1e-1, disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01):
         is_regularization=True
@@ -202,7 +201,37 @@ class MultiLayerLogicGateNet(nn.Module):
                 disc_error = (disc_error_w + disc_error_b)
                 
                 tau_err = torch.exp(-layer.tau)
-                reg += (l1_lambda * l1_error) + (disc_lambda * disc_error) + (tau_lambda * tau_err)
+                reg +=  (disc_lambda * disc_error) + (tau_lambda * tau_err)  +(l1_lambda * l1_error) 
+                # Encourage tau to grow larger (L1 regularization, negative sign)
+            return reg
+        return regularization
+
+    @staticmethod
+    def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01,default=True):
+        is_regularization=True
+        platua_check=PlateauTracker(patience,min_err)
+        def regularization(module: Any,epoch,avg_error) -> Tensor:
+            nonlocal is_regularization
+            if platua_check.update(epoch,avg_error):
+                is_regularization=not is_regularization
+                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            if not is_regularization:
+                return torch.tensor(0.0)
+            reg = torch.tensor(0.0, device=next(module.parameters()).device)
+            for layer in module.expectation_layers:
+                layer = cast(OrNorGateLayer, layer)
+                w = layer.weight
+                b = layer.bias
+                
+                #l1_error = w.relu().mean() 
+                #disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
+                #disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
+                disc_error_w = w.clamp_(0.0,0.5)
+                disc_error_b = b.clamp_(0.0,0.5)
+                disc_error = (disc_error_w + disc_error_b)
+                
+                tau_err = torch.exp(-layer.tau)
+                reg +=  (disc_lambda * disc_error) + (tau_lambda * tau_err) # +(l1_lambda * l1_error) +
                 # Encourage tau to grow larger (L1 regularization, negative sign)
             return reg
         return regularization
@@ -227,8 +256,8 @@ class MultiLayerLogicGateNet(nn.Module):
     def constraint(module:Any):
         for layer in module.expectation_layers:
             layer = cast(OrNorGateLayer, layer)
-            layer.weight.clamp_(-5.0, 5.0)
-            layer.bias.clamp_(-5.0, 5.0)
+            layer.weight.clamp_(-20.0, 20.0)
+            layer.bias.clamp_(-20.0, 20.0)
             layer.tau_costraint(20)
 
 
@@ -267,73 +296,7 @@ class MultiLayerLogicGateNet(nn.Module):
             x = layer(x)
         return x
 
-def train_xor_extend_layer(epoch:int=50,is_dataparallel:bool=False):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset_path = Path("artifacts/xor_dataset.pt")
-    if not dataset_path.exists():
-        save_xor_dataset(dataset_path, num_samples=100000)
-
-    x_all, y_all = load_xor_dataset(dataset_path, device=device)
-    x_train, y_train, _, _ = split_dataset(x_all, y_all, train_ratio=0.8, shuffle=True)
-
-    base_net = MultiLayerLogicGateNet(
-        input_dim=64,
-        layer_dims=(256, 128, 64,128,64 ,32),
-        use_softmax=True,
-        max_threshold=0.95,
-    )
-    from prelude import stop_on_epoch
-    import matplotlib.pyplot as plt
-    
-    l1_regs = [0.01, 0.05, 0.1, 0.5]
-    checkpoints = []
-
-    for l1 in l1_regs:
-        print(f"\n{'='*50}\nStarting training with L1 = {l1}, Disc = {l1}, Tau = {l1}\n{'='*50}")
-        net = base_net.clone()
-        
-        if torch.cuda.device_count() > 1 and is_dataparallel:
-            print(f"Using {torch.cuda.device_count()} GPUs for MNIST!")
-            model = nn.DataParallel(net)
-        else:
-            model = net
-
-        trainer = Trainer(
-            dataset=(x_train, y_train),
-            stop_on=stop_on_epoch(epoch),
-            batch_size=128,
-            model=model,
-            loss_fn=nn.HuberLoss(delta=0.5),
-            optimizer_cls=torch.optim.RAdam,
-            optimizer_kwargs={},
-            regularization_fn= MultiLayerLogicGateNet.regularization_factory(l1, l1, l1),
-            lr_scheduler_factory=None,#fn_call_on_plateau_scheduler(MultiLayerLogicGateNet.discretize),
-            constraint=MultiLayerLogicGateNet.constraint,
-            checkpoint_path=None, # Don't overwrite for each run
-            device=device,
-            check_grad=False, # Turned off to reduce console spam for 4 runs
-            peek=net.peek,
-        )
-        ckpt = trainer.train()
-        checkpoints.append((l1, ckpt))
-
-    # Plot all errors together
-    plt.figure(figsize=(10, 6))
-    for l1, ckpt in checkpoints:
-        errors = ckpt.avg_errors()
-        plt.plot(range(1, len(errors) + 1), errors, label=f"L1 = {l1}", linewidth=2)
-        
-    plt.xlabel("Epoch")
-    plt.ylabel("Testing Error")
-    plt.title("Effect of L1 Regularization on Training Error")
-    plt.grid(alpha=0.3)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    return checkpoints
-
-def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
+def train_xor_main(reg=0.5,epoch=40,  device_id=0):
     if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
         device = torch.device(f"cuda:{device_id}")
     else:
@@ -355,8 +318,6 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         even_initialization=NormalInitWrapper(1.0),
         bias_initialization=bias_initizalizer
     ).to(device)
-    from structural_pruner import prune_continuous_network
-    from stopping_utils import fn_call_on_plateau_scheduler
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
@@ -365,8 +326,8 @@ def train_xor_main(bias_initizalizer,epoch=40,  device_id=0):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory(0.5, 0.5, tau_lambda=0.3),
-        lr_scheduler_factory=fn_call_on_plateau_scheduler(prune_continuous_network),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(reg, tau_lambda=0.4),
+        lr_scheduler_factory=None,
         constraint=MultiLayerLogicGateNet.constraint,
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
@@ -409,17 +370,17 @@ def run_train_xor_main_parallel():
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx,bias in enumerate([1.0,1.0,1.0,1.0]):
+        for idx,reg in enumerate([0.1,0.25,.5,0.75]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,NormalInitWrapper(bias), 150, dev_id)] = bias          
+            future_to_r1[executor.submit(train_xor_main,reg, 150, dev_id)] = reg          
         for future in concurrent.futures.as_completed(future_to_r1):
-            bias = future_to_r1[future]
+            reg = future_to_r1[future]
             try:
                 res = future.result()
-                results.append((bias, res))
-                print(f"========== COMPLETED RUN WITH bias={bias} ==========")
+                results.append((reg, res))
+                print(f"========== COMPLETED RUN WITH reg={reg} ==========")
             except Exception as e:
-                print(f"========== FAILED RUN WITH bias={bias}: {e} ==========")
+                print(f"========== FAILED RUN WITH reg={reg}: {e} ==========")
             
     # Plot all results at the end
     if results:
