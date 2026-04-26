@@ -316,7 +316,7 @@ def train_xor_main(reg=0.5,epoch=40,  device_id=0):
         grad_scalar=True,
         odd_initialization=NormalInitWrapper(0.0),
         even_initialization=NormalInitWrapper(1.0),
-        bias_initialization=bias_initizalizer
+        bias_initialization=NormalInitWrapper(1.0),
     ).to(device)
     trainer = Trainer(
         dataset=(x_train, y_train),
