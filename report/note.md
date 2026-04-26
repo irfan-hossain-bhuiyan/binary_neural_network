@@ -155,3 +155,6 @@ I made a new regularization,In the previous regularization I have gradient when 
 To get close to 1,In this new regularization I removed that,new on w>1,grad =0,
 Also I removed isolation (regularization turns on and off on plataue) in the new experiment. 
 ![](./change_regularization.png)
+
+Then I tested one with isolation on,It seems like isolation has no useful effect,But in all this time this new regularization is working good.
+![](./new_reg_with_isolation.png)

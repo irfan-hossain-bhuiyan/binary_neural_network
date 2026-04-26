@@ -401,7 +401,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    return train_xor_main(NormalInitWrapper(0.0), 100)
+    return train_xor_main(0.4, 100)
 if __name__ == "__main__":
     main()
 
