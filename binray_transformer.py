@@ -337,7 +337,7 @@ def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={"lr":0.1,"betas":(0.5,0.5)},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(reg, tau_lambda=0.4,isolate_on_platua=False),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(0.5, tau_lambda=0.4,isolate_on_platua=False),
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
