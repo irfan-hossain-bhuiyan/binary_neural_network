@@ -158,3 +158,9 @@ Also I removed isolation (regularization turns on and off on plataue) in the new
 
 Then I tested one with isolation on,It seems like isolation has no useful effect,But in all this time this new regularization is working good.
 ![](./new_reg_with_isolation.png)
+
+## Experiment 18:
+I have seeing that thins new regularization is working the best,On second thought,I am using random weight on platua,It is working 
+somewhat.
+![](./new_reg_with_isolation2.png)
+Let's make the training bigger to see what's the issue. If I train for 300 epoch,What will I get,Also I think I need to update the learning rate,In the graph you see the node can keep going,I am gonna test with 300 epoch to see what happens.

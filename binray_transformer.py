@@ -306,7 +306,7 @@ class MultiLayerLogicGateNet(nn.Module):
             x = layer(x)
         return x
 
-def train_xor_main(reg=0.5,epoch=40,  device_id=0,print_terminal=True):
+def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
     if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
         device = torch.device(f"cuda:{device_id}")
     else:
@@ -332,20 +332,20 @@ def train_xor_main(reg=0.5,epoch=40,  device_id=0,print_terminal=True):
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
-        batch_size=128,
+        batch_size=256,
         model=net,
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
-        optimizer_kwargs={},
+        optimizer_kwargs={"lr":0.1,"betas":(0.5,0.5)},
         regularization_fn= MultiLayerLogicGateNet.regularization_factory2(reg, tau_lambda=0.4,isolate_on_platua=False),
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
-            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=15,min_delta=0.01)
+            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=20,min_delta=0.01)
         ],
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
-        check_grad=False, # Turned off to reduce console spam for 4 runs
+        check_grad=check_grad, # Turned off to reduce console spam for 4 runs
         peek=net.peek,
 
     )
@@ -421,7 +421,7 @@ def run_train_xor_main_parallel():
     return results
 
 def main():
-    return train_xor_main(0.5, 100)
+    return train_xor_main(300,check_grad=True)
 if __name__ == "__main__":
     main()
 
