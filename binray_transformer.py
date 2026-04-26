@@ -207,8 +207,9 @@ class MultiLayerLogicGateNet(nn.Module):
         return regularization
 
     @staticmethod
-    def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=15,min_err:float=0.01):
+    def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=15,min_err:float=0.01,isolate_on_platua=True):
         is_regularization=True
+        min_err=min_err if isolate_on_platua else 0.0
         platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
             nonlocal is_regularization
@@ -251,6 +252,15 @@ class MultiLayerLogicGateNet(nn.Module):
                     layer = cast(OrNorGateLayer, layer)
                     result[f"tau_{i}"] = layer.tau.mean().item() if layer.tau.numel() > 1 else layer.tau.item()
         return result
+
+    @staticmethod
+    def noise_injector_factory(std_dev: float) -> Callable[["MultiLayerLogicGateNet"], None]:
+        def inject_noise(module: "MultiLayerLogicGateNet") -> None:
+            import torch
+            with torch.no_grad():
+                for layer in module.expectation_layers:
+                    layer.weight.add_(torch.randn_like(cast(torch.Tensor, layer.weight)) * std_dev) # type: ignore
+        return inject_noise
 
     @staticmethod
     def constraint(module:Any):
@@ -318,6 +328,7 @@ def train_xor_main(reg=0.5,epoch=40,  device_id=0,print_terminal=True):
         even_initialization=NormalInitWrapper(1.0),
         bias_initialization=NormalInitWrapper(1.0),
     ).to(device)
+    from stopping_utils import call_fn_on_plateau
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epoch),
@@ -326,9 +337,12 @@ def train_xor_main(reg=0.5,epoch=40,  device_id=0,print_terminal=True):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(reg, tau_lambda=0.4),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(reg, tau_lambda=0.4,isolate_on_platua=False),
         lr_scheduler_factory=None,
-        constraint=MultiLayerLogicGateNet.constraint,
+        constraints=[
+            MultiLayerLogicGateNet.constraint,
+            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=15,min_delta=0.01)
+        ],
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
         check_grad=False, # Turned off to reduce console spam for 4 runs
@@ -397,11 +411,17 @@ def run_train_xor_main_parallel():
         plt.legend()
         plt.tight_layout()
         plt.show()
+        
+        # Plot weight distributions for all models in parallel runs
+        from plot_utils import plot_weight_distribution
+        for idx, ckpt in results:
+            print(f"\n--- Weight Distribution for bias={idx} ---")
+            plot_weight_distribution(ckpt.model)
 
     return results
 
 def main():
-    return train_xor_main(0.4, 100)
+    return train_xor_main(0.5, 100)
 if __name__ == "__main__":
     main()
 

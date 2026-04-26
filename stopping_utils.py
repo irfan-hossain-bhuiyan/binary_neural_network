@@ -68,6 +68,24 @@ class FnCallOnPlateau:
             from collections import defaultdict
             self.optimizer.state = defaultdict(dict)
 
+def call_fn_on_plateau(
+    fn: Callable[[nn.Module], None],
+    patience: int = 10,
+    min_delta: float = 1e-4,
+) -> Callable[..., None]:
+    """
+    Returns a constraint-compatible callback that tracks a Plateau internally
+    and fires the target function (fn) only when a plateau is detected.
+    """
+    tracker = PlateauTracker(patience=patience, min_delta=min_delta)
+    
+    def callback(module: nn.Module, epoch: int, avg_error: float):
+        if tracker.update(epoch, avg_error):
+            CONSOLE.print(f"[bold red]Plateau tracker triggered function at Epoch {epoch}[/bold red]")
+            fn(module)
+            
+    return callback
+
 def fn_call_on_plateau_scheduler(
     fn: Callable[[nn.Module], None],
     patience: int = 10,

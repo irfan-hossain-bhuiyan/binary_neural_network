@@ -30,7 +30,7 @@ class Trainer:
     lr_scheduler_factory:       Optional[Callable[..., Any]]           = None
     device:                     torch.device                           = field(default_factory=resolve_device)
     check_grad:                 bool                                   = False
-    constraint:                 Optional[Callable[[nn.Module], None]]  = None
+    constraints:                 Callable[[nn.Module], None] | List[Callable[[nn.Module], None]] | None = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
 
     # ------------------------------------------------------------------
@@ -85,8 +85,11 @@ class Trainer:
 
                 with torch.no_grad():
                     epoch_error += self.error_fn(logits, yb).item()
-                    if self.constraint is not None:
-                        _call_matching(self.constraint, {"module": unwrapped_model, "model": unwrapped_model, "epoch": epoch, "avg_loss": avg_loss, "avg_error": avg_error, "avg_reg": avg_reg})
+                    if self.constraints is not None:
+                        constraints = self.constraints if isinstance(self.constraints, list) else [self.constraints]
+                        kwargs = {"module": unwrapped_model, "model": unwrapped_model, "epoch": epoch, "avg_loss": avg_loss, "avg_error": avg_error, "avg_reg": avg_reg}
+                        for c in constraints:
+                            _call_matching(c, kwargs)
                     
                 epoch_loss += loss.item()
                 epoch_reg  += reg.item()
