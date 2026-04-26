@@ -149,3 +149,9 @@ Didn't work well.
 ## Experiment 16:
 I have another assumption,That was If I have missed something in the initialization.
 So I made the initialization (0.2,0.8),and turns out it doesn't have any considerable effect.
+
+## Experiment 17:
+I made a new regularization,In the previous regularization I have gradient when the weight is greater than 1,
+To get close to 1,In this new regularization I removed that,new on w>1,grad =0,
+Also I removed isolation (regularization turns on and off on plataue) in the new experiment. 
+![](./change_regularization.png)

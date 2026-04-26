@@ -207,16 +207,16 @@ class MultiLayerLogicGateNet(nn.Module):
         return regularization
 
     @staticmethod
-    def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=10,min_err:float=0.01,default=True):
+    def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=15,min_err:float=0.01):
         is_regularization=True
-        #platua_check=PlateauTracker(patience,min_err)
+        platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
-            #nonlocal is_regularization
-            #if platua_check.update(epoch,avg_error):
-            #    is_regularization=not is_regularization
-            #    print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
-            #if not is_regularization:
-            #    return torch.tensor(0.0)
+            nonlocal is_regularization
+            if platua_check.update(epoch,avg_error):
+                is_regularization=not is_regularization
+                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
+            if not is_regularization:
+                return torch.tensor(0.0)
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -370,7 +370,7 @@ def run_train_xor_main_parallel():
     ctx = mp.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(mp_context=ctx) as executor:
         future_to_r1 = {}
-        for idx,reg in enumerate([0.1,0.25,.5,0.75]):
+        for idx,reg in enumerate([0.5,0.5,0.5,0.5]):
             dev_id = idx % num_gpus
             future_to_r1[executor.submit(train_xor_main,reg, 150, dev_id,print_terminal=False)] = reg          
         for future in concurrent.futures.as_completed(future_to_r1):
