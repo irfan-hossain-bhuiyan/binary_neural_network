@@ -173,7 +173,8 @@ To make sure the weights remains in 0 and 1,
 ![](./reg_iso.png)
 As you can see it crosses the 0.1 boundary,also kinda fast,But a issue is it is also highly skewed toward initial randomaization.
 
-Other than isolation of regularization,there is also randomization on platua,So a lot of things.
+Other than isolation of regularization,there is also randomization on platua,So a lot of things.The weight distribution in here,is also spot on
+![](./weight_distribution.png)
 
 ## Experiment 20:
 only keep _/\_ regularization and raddom noise added.
