@@ -389,7 +389,7 @@ def run_train_xor_main_parallel():
         future_to_r1 = {}
         for idx,reg in enumerate([0.5,0.5,0.5,0.5]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,reg, 200, dev_id,print_terminal=False)] = reg          
+            future_to_r1[executor.submit(train_xor_main, 200, dev_id,print_terminal=False)] = reg          
         for future in concurrent.futures.as_completed(future_to_r1):
             reg = future_to_r1[future]
             try:
