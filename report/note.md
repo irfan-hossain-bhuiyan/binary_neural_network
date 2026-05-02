@@ -167,5 +167,13 @@ Let's make the training bigger to see what's the issue. If I train for 300 epoch
 Also we can see the randomization of weights on platau do help sometimes,
 But I also found out Unlike previous regularization,This one have a lot of weights between 0.5 and 1.
 ## Experiment 19:
-In the new test I am checking if I move th regularization between _/‾ and \_/\_ it starts with \_/\_
+In the new test I am checking if I move th regularization between _/‾ and _/\_ it starts with _/\_
 To make sure the weights remains in 0 and 1,
+
+![](./reg_iso.png)
+As you can see it crosses the 0.1 boundary,also kinda fast,But a issue is it is also highly skewed toward initial randomaization.
+
+Other than isolation of regularization,there is also randomization on platua,So a lot of things.
+
+## Experiment 20:
+only keep _/\_ regularization and raddom noise added.

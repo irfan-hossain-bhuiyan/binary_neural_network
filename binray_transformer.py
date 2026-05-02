@@ -225,13 +225,13 @@ class MultiLayerLogicGateNet(nn.Module):
                 #l1_error = w.relu().mean() 
                 #
                 #
-                if reg_2:
-                    disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
-                    disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
+                #if reg_2:
+                disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
+                disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
 
-                else:
-                    disc_error_w = w.clamp(0.0,0.5).mean()
-                    disc_error_b = b.clamp(0.0,0.5).mean()
+                #else:
+                #    disc_error_w = w.clamp(0.0,0.5).mean()
+                #    disc_error_b = b.clamp(0.0,0.5).mean()
                 disc_error = (disc_error_w + disc_error_b)
                 
                 tau_err = torch.exp(-layer.tau)
@@ -344,7 +344,7 @@ def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
-            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=20,min_delta=0.01)
+            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=15,min_delta=0.01)
         ],
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
