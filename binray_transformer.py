@@ -208,16 +208,14 @@ class MultiLayerLogicGateNet(nn.Module):
 
     @staticmethod
     def regularization_factory2(disc_lambda: float=1e-1, tau_lambda: float=1e-1, patience:int=15,min_err:float=0.01,isolate_on_platua=True):
-        is_regularization=True
+        reg_2=True
         min_err=min_err if isolate_on_platua else 0.0
         platua_check=PlateauTracker(patience,min_err)
         def regularization(module: Any,epoch,avg_error) -> Tensor:
-            nonlocal is_regularization
+            nonlocal reg_2
             if platua_check.update(epoch,avg_error):
-                is_regularization=not is_regularization
-                print(f"Platau found,regularization toggled.regularization active:{is_regularization}")
-            if not is_regularization:
-                return torch.tensor(0.0)
+                reg_2=not reg_2
+                print(f"Platau found,regularization toggled.regularization active:{reg_2}")
             reg = torch.tensor(0.0, device=next(module.parameters()).device)
             for layer in module.expectation_layers:
                 layer = cast(OrNorGateLayer, layer)
@@ -225,10 +223,15 @@ class MultiLayerLogicGateNet(nn.Module):
                 b = layer.bias
                 
                 #l1_error = w.relu().mean() 
-                #disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
-                #disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
-                disc_error_w = w.clamp(0.0,0.5).mean()
-                disc_error_b = b.clamp(0.0,0.5).mean()
+                #
+                #
+                if reg_2:
+                    disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
+                    disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
+
+                else:
+                    disc_error_w = w.clamp(0.0,0.5).mean()
+                    disc_error_b = b.clamp(0.0,0.5).mean()
                 disc_error = (disc_error_w + disc_error_b)
                 
                 tau_err = torch.exp(-layer.tau)
@@ -337,7 +340,7 @@ def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
         optimizer_kwargs={"lr":0.1,"betas":(0.5,0.5)},
-        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(0.5, tau_lambda=0.4,isolate_on_platua=False),
+        regularization_fn= MultiLayerLogicGateNet.regularization_factory2(0.5, tau_lambda=0.4,isolate_on_platua=True),
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
@@ -386,7 +389,7 @@ def run_train_xor_main_parallel():
         future_to_r1 = {}
         for idx,reg in enumerate([0.5,0.5,0.5,0.5]):
             dev_id = idx % num_gpus
-            future_to_r1[executor.submit(train_xor_main,reg, 150, dev_id,print_terminal=False)] = reg          
+            future_to_r1[executor.submit(train_xor_main,reg, 200, dev_id,print_terminal=False)] = reg          
         for future in concurrent.futures.as_completed(future_to_r1):
             reg = future_to_r1[future]
             try:
