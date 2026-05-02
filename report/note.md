@@ -164,3 +164,8 @@ I have seeing that thins new regularization is working the best,On second though
 somewhat.
 ![](./new_reg_with_isolation2.png)
 Let's make the training bigger to see what's the issue. If I train for 300 epoch,What will I get,Also I think I need to update the learning rate,In the graph you see the node can keep going,I am gonna test with 300 epoch to see what happens.
+Also we can see the randomization of weights on platau do help sometimes,
+But I also found out Unlike previous regularization,This one have a lot of weights between 0.5 and 1.
+## Experiment 19:
+In the new test I am checking if I move th regularization between _/‾ and \_/\_ it starts with \_/\_
+To make sure the weights remains in 0 and 1,
