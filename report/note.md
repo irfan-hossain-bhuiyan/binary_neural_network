@@ -176,5 +176,14 @@ As you can see it crosses the 0.1 boundary,also kinda fast,But a issue is it is 
 Other than isolation of regularization,there is also randomization on platua,So a lot of things.The weight distribution in here,is also spot on
 ![](./weight_distribution.png)
 
+But we also see not all intialization make through.
+
+I forgot I also made the lr:0.1 and betas:(0.5,0.5) here.
 ## Experiment 20:
 only keep _/\_ regularization and raddom noise added.
+- also had lr=0.1,betas=(0.5,0.5)
+It came out horirble
+![](./bad_one.png)
+
+## Experiment 21:
+I am gonna do experiment 19 but with default learniing rate and default betas
