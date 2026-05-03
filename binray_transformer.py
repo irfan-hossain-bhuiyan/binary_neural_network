@@ -225,7 +225,7 @@ class MultiLayerLogicGateNet(nn.Module):
                 #l1_error = w.relu().mean() 
                 #
                 #
-                if reg_2:
+                if not reg_2:
                     disc_error_w = (0.5-(w-0.5).abs()).relu().mean()
                     disc_error_b = (0.5-(b-0.5).abs()).relu().mean()
 
@@ -339,12 +339,12 @@ def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
         model=net,
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
-        optimizer_kwargs={},
+        optimizer_kwargs={"lr":0.01},
         regularization_fn= MultiLayerLogicGateNet.regularization_factory2(0.5, tau_lambda=0.3,isolate_on_platua=True),
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
-            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=15,min_delta=0.01)
+            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=30,min_delta=0.01)
         ],
         checkpoint_path=None, # Don't overwrite for each run
         device=device,

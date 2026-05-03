@@ -8,3 +8,6 @@
 2. In the training the gradient is looking worse,
  I have used mse and adam optimizer,I think low training will work better in here,With BCELoss,other than currently what I am using.
 3. I got an error when testing,I fixed it.
+
+## 21/5/2026:
+1. 
