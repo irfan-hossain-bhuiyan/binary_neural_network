@@ -187,3 +187,5 @@ It came out horirble
 
 ## Experiment 21:
 I am gonna do experiment 19 but with default learniing rate and default betas
+I guess adding noise is halting the progress,Didn't go well.
+![](./bad_one2.png)
