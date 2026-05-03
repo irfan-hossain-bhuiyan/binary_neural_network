@@ -344,7 +344,7 @@ def train_xor_main(epoch=40,  device_id=0,print_terminal=True,check_grad=False):
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
-            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=15,min_delta=0.01)
+            call_fn_on_plateau(MultiLayerLogicGateNet.noise_injector_factory(0.3), patience=25,min_delta=0.01)
         ],
         checkpoint_path=None, # Don't overwrite for each run
         device=device,
