@@ -189,3 +189,8 @@ It came out horirble
 I am gonna do experiment 19 but with default learniing rate and default betas
 I guess adding noise is halting the progress,Didn't go well.
 ![](./bad_one2.png)
+
+## Experiment 22:
+I am now experimenting more with and gate,and which type result in better gradient distribution,
+Here is the image 
+![](./and_gate_analysis.png)

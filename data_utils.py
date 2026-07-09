@@ -2,7 +2,10 @@ import torch
 from pathlib import Path
 from prelude import DEVICE
 
-def load_xor_dataset(filepath: str | Path, device: torch.device | None = DEVICE) -> tuple[torch.Tensor, torch.Tensor]:
+def load_xor_dataset(
+    filepath: str | Path,
+    device: torch.device | None = DEVICE,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Load a previously saved XOR dataset."""
     payload = torch.load(Path(filepath), map_location="cpu")
     x = payload["X"].float()
@@ -21,17 +24,32 @@ def int_to_bits(x: torch.Tensor, num_bits: int = 32) -> torch.Tensor:
     return bits.float()
 
 
-def generate_xor_dataset(num_samples: int, device: torch.device = torch.device("cpu")):
-    """Generate dataset for 32-bit XOR."""
-    a = torch.randint(low=0, high=2**32, size=(num_samples,), device=device, dtype=torch.long)
-    b = torch.randint(low=0, high=2**32, size=(num_samples,), device=device, dtype=torch.long)
+def generate_xor_dataset(
+    num_samples: int,
+    num_bits: int = 32,
+    device: torch.device = torch.device("cpu"),
+):
+    """Generate dataset for n-bit XOR.
 
-    a_bits = int_to_bits(a, num_bits=32)
-    b_bits = int_to_bits(b, num_bits=32)
+    Args:
+        num_samples: number of (a, b) pairs to generate.
+        num_bits: bit-width of each operand (default 32; use 16 for the smaller task).
+        device: torch device on which to create tensors.
+
+    Returns:
+        x: tensor of shape (num_samples, 2 * num_bits) with concatenated bit vectors.
+        y: tensor of shape (num_samples, num_bits) with the XOR result bits.
+    """
+    max_val = 2**num_bits
+    a = torch.randint(low=0, high=max_val, size=(num_samples,), device=device, dtype=torch.long)
+    b = torch.randint(low=0, high=max_val, size=(num_samples,), device=device, dtype=torch.long)
+
+    a_bits = int_to_bits(a, num_bits=num_bits)
+    b_bits = int_to_bits(b, num_bits=num_bits)
     x = torch.cat([a_bits, b_bits], dim=1)
 
     xor_val = a ^ b
-    y = int_to_bits(xor_val, num_bits=32)
+    y = int_to_bits(xor_val, num_bits=num_bits)
 
     return x, y
 
@@ -39,13 +57,14 @@ def generate_xor_dataset(num_samples: int, device: torch.device = torch.device("
 def save_xor_dataset(
     filepath: str | Path,
     num_samples: int,
+    num_bits: int = 32,
     device: torch.device = torch.device("cpu"),
 ) -> Path:
     """Generate XOR dataset once and save to disk for reuse."""
-    x, y = generate_xor_dataset(num_samples=num_samples, device=device)
+    x, y = generate_xor_dataset(num_samples=num_samples, num_bits=num_bits, device=device)
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"X": x.cpu(), "Y": y.cpu(), "num_samples": num_samples}, path)
+    torch.save({"X": x.cpu(), "Y": y.cpu(), "num_samples": num_samples, "num_bits": num_bits}, path)
     return path
 
 def load_mnist(filepath: str | Path, device: torch.device | None = DEVICE, input_flatten: bool = True, output_binarize: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
@@ -127,7 +146,7 @@ def save_mnist(filepath: str | Path) -> Path:
 if __name__ == "__main__":
     xor_dataset_path = Path("artifacts/xor_dataset.pt")
     if not xor_dataset_path.exists():
-        save_xor_dataset(xor_dataset_path, num_samples=100000)
+        save_xor_dataset(xor_dataset_path, num_samples=100000, num_bits=32)
         print(f"Generated and saved XOR dataset to {xor_dataset_path}")
     else:
         print(f"XOR dataset already exists at {xor_dataset_path}")

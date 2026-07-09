@@ -65,9 +65,9 @@ class DiscreteMultiLayerLogicGateNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.to(torch.bool) # type: ignore
-        for layer in self.expectation_layers:
-            x = layer(x)
-        return x
+        # Use nn.Sequential for a more concise and PyTorch-idiomatic implementation
+        sequential_layers = nn.Sequential(*self.expectation_layers)
+        return sequential_layers(x)
 
     def to_continuous(self, use_softmax: bool = True, max_threshold: float = 0.95) -> Any:
         """
