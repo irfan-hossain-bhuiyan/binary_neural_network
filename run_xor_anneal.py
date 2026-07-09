@@ -16,11 +16,11 @@ from stopping_utils import call_fn_on_plateau
 
 
 def train_xor_anneal(
-    epoch: int = 40,
+    epoch: int = 50,
     device_id: int = 0,
     print_terminal: bool = True,
     check_grad: bool = False,
-    num_bits: int = 16,
+    num_bits: int = 32,
     start_temperature: float = 1.0,
     end_temperature: float = 0.01,
     variance_weight: float = 1e-3,
@@ -40,9 +40,9 @@ def train_xor_anneal(
 
     net = MultiLayerLogicGateNet(
         input_dim=2 * num_bits,
-        layer_dims=(64, 32, num_bits),
+        layer_dims=(64, 32, 64, num_bits),
         use_softmax=True,
-        grad_scalar=False,
+        grad_scalar=True,
         odd_initialization=NormalInitWrapper(0.0),
         even_initialization=NormalInitWrapper(1.0),
         bias_initialization=NormalInitWrapper(1.0),
@@ -66,7 +66,7 @@ def train_xor_anneal(
             MultiLayerLogicGateNet.linear_temperature_anneal_factory(
                 start_temperature=start_temperature,
                 end_temperature=end_temperature,
-                end_epoch=(epoch*2)//3,
+                end_epoch=epoch,
             ),
            # call_fn_on_plateau(
            #     MultiLayerLogicGateNet.noise_injector_factory(0.3),
