@@ -43,8 +43,8 @@ def train_xor_anneal(
         layer_dims=(64, 32, 64, num_bits),
         use_softmax=True,
         grad_scalar=True,
-        odd_initialization=NormalInitWrapper(0.0),
-        even_initialization=NormalInitWrapper(1.0),
+        odd_initialization=NormalInitWrapper(0.5),
+        even_initialization=NormalInitWrapper(0.5),
         bias_initialization=NormalInitWrapper(1.0),
     ).to(device)
 
@@ -58,7 +58,7 @@ def train_xor_anneal(
         model=net,
         loss_fn=nn.MSELoss(),
         optimizer_cls=Adam,
-        #optimizer_kwargs={"lr": 0.01},
+        optimizer_kwargs={"lr": 0.05},
         regularization_fn=variance_regularizer,
         lr_scheduler_factory=None,
         constraints=[
@@ -111,4 +111,4 @@ def train_xor_anneal(
 
 
 if __name__ == "__main__":
-    train_xor_anneal(epoch=40, num_bits=4)
+    train_xor_anneal(epoch=40, num_bits=16,check_grad=True)
