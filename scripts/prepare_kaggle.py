@@ -147,7 +147,9 @@ def build_archive(root: Path, files: list[str]) -> tuple[bytes, int]:
     return buf.getvalue(), raw_size
 
 
-BOOTSTRAP_TEMPLATE = '''"""Generated Kaggle bootstrap. DO NOT EDIT BY HAND.
+# NOTE: raw string so that escapes like \n survive verbatim into the
+# generated bootstrap instead of becoming literal newlines.
+BOOTSTRAP_TEMPLATE = r'''"""Generated Kaggle bootstrap. DO NOT EDIT BY HAND.
 
 Source of truth: Git commit __COMMIT__ (see COMMIT below).
 Regenerate with: python scripts/prepare_kaggle.py
