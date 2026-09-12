@@ -6,6 +6,8 @@ artifacts/
 kaggle/output/
 kaggle/results/
 kaggle/generated/
+# Generated Kaggle bootstrap (regenerate via scripts/prepare_kaggle.py).
+kaggle/train.py
 
 .env
 .env.*
