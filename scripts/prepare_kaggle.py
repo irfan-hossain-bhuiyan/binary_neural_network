@@ -152,7 +152,8 @@ def build_archive(root: Path, files: list[str]) -> tuple[bytes, int]:
 BOOTSTRAP_TEMPLATE = r'''"""Generated Kaggle bootstrap. DO NOT EDIT BY HAND.
 
 Source of truth: Git commit __COMMIT__ (see COMMIT below).
-Regenerate with: python scripts/prepare_kaggle.py
+Mode: __MODE__ / suite=__SUITE__ / seeds=__SEEDS__
+Regenerate with: python scripts/prepare_kaggle.py [--mode suite --suite ... --seeds ...]
 """
 
 import base64
@@ -166,6 +167,10 @@ import traceback
 from pathlib import Path
 
 COMMIT = "__COMMIT__"
+
+MODE = "__MODE__"
+SUITE = "__SUITE__"
+SEEDS = "__SEEDS__"
 
 ARCHIVE_B64 = """__ARCHIVE_B64__"""
 
@@ -189,9 +194,18 @@ def main() -> None:
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
         tar.extractall(path=str(REPO_DIR))
 
+    if MODE == "suite":
+        cmd = [sys.executable, "research/run_suite.py",
+               "--suite", SUITE, "--seeds", SEEDS,
+               "--output", "suite_metrics.json"]
+        metrics_file = REPO_DIR / "suite_metrics.json"
+    else:
+        cmd = [sys.executable, "research/run_experiment.py",
+               "--config", "research/configs/baseline.json",
+               "--output", "single_metrics.json"]
+        metrics_file = REPO_DIR / "single_metrics.json"
     proc = subprocess.run(
-        [sys.executable, "research/run_experiment.py",
-         "--experiment-name", "baseline", "--seed", "0"],
+        cmd,
         cwd=str(REPO_DIR),
         capture_output=True,
         text=True,
@@ -201,12 +215,11 @@ def main() -> None:
 
     if proc.returncode != 0:
         raise RuntimeError(
-            f"research/run_experiment.py failed (exit={proc.returncode}):\n"
+            f"benchmark entry point failed (exit={proc.returncode}):\n"
             f"{proc.stderr[-4000:]}"
         )
-    metrics_path = REPO_DIR / "metrics.json"
-    if metrics_path.exists():
-        metrics = json.loads(metrics_path.read_text())
+    if metrics_file.exists():
+        metrics = json.loads(metrics_file.read_text())
     else:
         metrics = _json_from_stdout(proc.stdout)
 
@@ -235,6 +248,17 @@ if __name__ == "__main__":
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate kaggle/train.py from HEAD")
+    parser.add_argument("--mode", choices=["single", "suite"], default="single",
+                        help="single baseline run (default) or task x seed suite")
+    parser.add_argument("--suite", default="baseline_suite",
+                        help="suite config name for --mode suite")
+    parser.add_argument("--seeds", default="0",
+                        help="comma-separated seeds for --mode suite")
+    args = parser.parse_args()
+
     root = Path(
         subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"], text=True
@@ -249,13 +273,15 @@ def main() -> None:
     if not files:
         print("ERROR: no source files selected for packaging.", file=sys.stderr)
         sys.exit(1)
-    if "research/run_experiment.py" not in files:
-        print(
-            "ERROR: research/run_experiment.py is not tracked in HEAD. "
-            "Commit it before packaging.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for required in ("research/run_experiment.py", "research/run_suite.py",
+                     "research/boolean_tasks.py"):
+        if required not in files:
+            print(
+                f"ERROR: {required} is not tracked in HEAD. "
+                "Commit it before packaging.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     archive, raw_size = build_archive(root, files)
     if len(archive) > MAX_COMPRESSED_BYTES:
@@ -267,12 +293,20 @@ def main() -> None:
         sys.exit(1)
 
     b64 = base64.b64encode(archive).decode("ascii")
-    script = BOOTSTRAP_TEMPLATE.replace("__COMMIT__", commit).replace(
-        "__ARCHIVE_B64__", b64
+    script = (
+        BOOTSTRAP_TEMPLATE.replace("__COMMIT__", commit)
+        .replace("__MODE__", args.mode)
+        .replace("__SUITE__", args.suite)
+        .replace("__SEEDS__", args.seeds)
+        .replace("__ARCHIVE_B64__", b64)
     )
     out_path = root / GENERATED_BOOTSTRAP
     out_path.write_text(script)
 
+    print(f"mode                    : {args.mode}")
+    if args.mode == "suite":
+        print(f"suite                   : {args.suite}")
+        print(f"seeds                   : {args.seeds}")
     print(f"files packaged          : {len(files)}")
     print(f"uncompressed size       : {raw_size} bytes")
     print(f"compressed archive size : {len(archive)} bytes")

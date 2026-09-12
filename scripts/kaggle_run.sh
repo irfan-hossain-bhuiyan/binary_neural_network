@@ -3,22 +3,30 @@
 #
 #   verify Git tree clean
 #     -> get commit hash
-#     -> generate Kaggle script from HEAD
+#     -> generate Kaggle script from HEAD (single or suite mode)
 #     -> submit
 #     -> poll status
 #     -> download output
 #     -> verify commit hash
 #     -> archive local result
+#     -> append to local ledger (kaggle/results/experiments.jsonl)
 #     -> print summary
 #
-# NOTE on kaggle/train.py: it is a *generated* artifact (produced by
-# scripts/prepare_kaggle.py from the committed HEAD). Modifications to
-# that single file do not count as a dirty tree; every other tracked
-# modification blocks the run.
+# Modes (via environment):
+#   KAGGLE_MODE=single  one baseline run (default, preserves original behavior)
+#   KAGGLE_MODE=suite   task x seed suite in one Kaggle job
+#   SUITE=baseline_suite
+#   SEEDS=0             comma-separated (suite mode)
+#
+# NOTE on kaggle/train.py: it is a *generated, git-ignored* artifact
+# (produced by scripts/prepare_kaggle.py from the committed HEAD).
 set -euo pipefail
 
 KERNEL_ID="irfanhossainbhuiyan/binary-neural-network-research"
 GENERATED="kaggle/train.py"
+KAGGLE_MODE="${KAGGLE_MODE:-single}"
+SUITE="${SUITE:-baseline_suite}"
+SEEDS="${SEEDS:-0}"
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -26,12 +34,11 @@ cd "$ROOT"
 COMMIT="$(git rev-parse HEAD)"
 SHORT_COMMIT="$(git rev-parse --short HEAD)"
 echo "Experiment commit: $COMMIT ($SHORT_COMMIT)"
+echo "Mode: $KAGGLE_MODE suite=$SUITE seeds=$SEEDS"
 
-# ---- refuse dirty experiments (except the generated bootstrap) ----
-DIRTY="$(git status --porcelain | grep -v "kaggle/train.py" || true)"
-# Untracked files (??) are allowed: ignored outputs (kaggle/output,
-# kaggle/results, artifacts) never appear here anyway.
-DIRTY_TRACKED="$(echo "$DIRTY" | grep -v '^??' | grep -v '^$' || true)"
+# ---- refuse dirty experiments ----
+# kaggle/train.py is generated+ignored so it never appears here.
+DIRTY_TRACKED="$(git status --porcelain | grep -v '^??' | grep -v '^$' || true)"
 if [ -n "$DIRTY_TRACKED" ]; then
     echo "Working tree is dirty."
     echo "Commit the experiment before submitting it."
@@ -40,7 +47,11 @@ if [ -n "$DIRTY_TRACKED" ]; then
 fi
 
 # ---- generate the Kaggle script from HEAD ----
-python scripts/prepare_kaggle.py
+if [ "$KAGGLE_MODE" = "suite" ]; then
+    python scripts/prepare_kaggle.py --mode suite --suite "$SUITE" --seeds "$SEEDS"
+else
+    python scripts/prepare_kaggle.py --mode single
+fi
 
 test -f "$GENERATED"
 python -m py_compile "$GENERATED"
@@ -96,21 +107,99 @@ if [ "$RESULT_COMMIT" != "$COMMIT" ]; then
 fi
 echo "Commit verification passed: $RESULT_COMMIT"
 
-# ---- archive local result by commit ----
+# ---- archive local result by commit (+ append to ledger) ----
 mkdir -p kaggle/results
-EXP_NAME="$(python3 -c "import json; print(json.load(open('kaggle/output/result.json')).get('metrics', {}).get('experiment_name', 'experiment'))")"
-SEED="$(python3 -c "import json; print(json.load(open('kaggle/output/result.json')).get('metrics', {}).get('seed', 'noseed'))")"
-ARCHIVED="kaggle/results/${SHORT_COMMIT}_${EXP_NAME}_seed${SEED}.json"
+export SHORT_COMMIT KAGGLE_MODE SUITE SEEDS
+ARCHIVED="$(python3 - <<'EOF'
+import json, os
+r = json.load(open('kaggle/output/result.json'))
+m = r.get('metrics', {})
+short = os.environ['SHORT_COMMIT']
+mode = os.environ['KAGGLE_MODE']
+if mode == 'suite' and isinstance(m.get('runs'), list):
+    suite = m.get('suite_name', os.environ['SUITE'])
+    seeds = os.environ['SEEDS'].replace(',', '-')
+    dest = f"kaggle/results/{short}_suite_{suite}_seeds{seeds}.json"
+else:
+    exp = m.get('experiment_name', m.get('task_name', 'experiment'))
+    seed = m.get('seed', 'noseed')
+    dest = f"kaggle/results/{short}_{exp}_seed{seed}.json"
+print(dest)
+EOF
+)"
 cp kaggle/output/result.json "$ARCHIVED"
 echo "Archived result to $ARCHIVED"
 
+python3 - "$ARCHIVED" <<'EOF'
+import json, sys
+# Append one ledger line per run; skip experiment_ids already present.
+archived = sys.argv[1]
+r = json.load(open('kaggle/output/result.json'))
+m = r.get('metrics', {})
+ledger_path = 'kaggle/results/experiments.jsonl'
+seen = set()
+try:
+    with open(ledger_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    seen.add(json.loads(line).get('experiment_id'))
+                except json.JSONDecodeError:
+                    pass
+except FileNotFoundError:
+    pass
+entries = []
+if isinstance(m.get('runs'), list):
+    for run in m['runs']:
+        entries.append({
+            'experiment_id': run.get('experiment_id'),
+            'git_commit': r.get('git_commit'),
+            'task_name': run.get('task_name'),
+            'seed': run.get('seed'),
+            'result_file': archived,
+            'status': run.get('status'),
+        })
+else:
+    entries.append({
+        'experiment_id': m.get('experiment_id'),
+        'git_commit': r.get('git_commit'),
+        'task_name': m.get('task_name', m.get('experiment_name')),
+        'seed': m.get('seed'),
+        'result_file': archived,
+        'status': r.get('status'),
+    })
+added = 0
+with open(ledger_path, 'a') as f:
+    for e in entries:
+        if e['experiment_id'] and e['experiment_id'] in seen:
+            continue
+        f.write(json.dumps(e) + '\n')
+        seen.add(e['experiment_id'])
+        added += 1
+print(f"Ledger: +{added} entries ({ledger_path})")
+EOF
+
 # ---- print summary ----
-python3 -c "
+if [ "$KAGGLE_MODE" = "suite" ]; then
+    python3 -c "
+import json
+r = json.load(open('kaggle/output/result.json'))
+m = r.get('metrics', {})
+print('suite:', m.get('suite_name'), '| runs:', len(m.get('runs', [])))
+for task, s in m.get('summary', {}).items():
+    d = (s.get('discrete_exact_accuracy') or {})
+    rec = s.get('discrete_exact_recovery_count', '?')
+    print(f'{task:18s} ok={s.get(\"num_success\")}/{s.get(\"num_runs\")} '
+          f'recovery={rec} disc_exact_mean={d.get(\"mean\")} gap_mean={(s.get(\"continuous_discrete_gap\") or {}).get(\"mean\")}')
+"
+else
+    python3 -c "
 import json
 r = json.load(open('kaggle/output/result.json'))
 m = r.get('metrics', {})
 print('status               :', r.get('status'))
-print('experiment           :', m.get('experiment_name'))
+print('experiment           :', m.get('experiment_name', m.get('task_name')))
 print('seed                 :', m.get('seed'))
 print('continuous_accuracy  :', m.get('continuous_accuracy'))
 print('continuous_exact_acc :', m.get('continuous_exact_accuracy'))
@@ -120,3 +209,4 @@ print('final_loss           :', m.get('final_loss'))
 print('runtime_seconds      :', m.get('runtime_seconds'))
 print('gpu                  :', m.get('gpu_name'))
 "
+fi
