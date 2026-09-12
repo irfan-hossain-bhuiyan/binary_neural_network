@@ -136,7 +136,7 @@ class MultiLayerLogicGateNet(nn.Module):
         ``start_epoch`` so the temperature stays at ``end_temperature``.
         """
 
-        def anneal(module: Any, epoch: int = start_epoch, **kwargs: Any) -> None:
+        def anneal(module: Any, epoch: int  ,**kwargs: Any) -> None:
             model = cast(MultiLayerLogicGateNet, module)
             total = end_epoch if end_epoch is not None else epoch
             progress = min(1.0, max(0.0, (epoch - start_epoch) / max(1, total - start_epoch)))
@@ -147,9 +147,50 @@ class MultiLayerLogicGateNet(nn.Module):
                 with torch.no_grad():
                     temperatures.fill_(temperature)
             else:
+                with torch.no_grad():
+                    for temp in temperatures:
+                        temp.fill_(temperature)
+        return anneal
+
+    @staticmethod
+    def error_based_temperature_anneal_factory(
+        min_temperature: float = 0.01,
+        alpha: float = 0.9,
+    ) -> Callable[[Any], None]:
+        """Return a constraint that anneals temperature based on average error using exponential smoothing.
+
+        The temperature is updated as: temperature = current_temperature * alpha + error * (1 - alpha)
+        This ensures the temperature smoothly approaches the average error over time.
+
+        Args:
+            initial_temperature: Starting temperature value (no maximum cap).
+            min_temperature: Minimum temperature value (temperature won't go below this).
+            alpha: Smoothing factor (0 < alpha < 1). Higher values make the temperature
+                change more slowly, while lower values make it more responsive to error changes.
+        """
+
+        def anneal(module: Any, avg_error: float,) -> None:
+            model = cast(MultiLayerLogicGateNet, module)
+            temperatures = model.temperatures
+
+            # Get current temperature(s)
+            if isinstance(temperatures, (nn.Parameter, torch.Tensor)):
+                current_temp = temperatures.item() if temperatures.numel() == 1 else temperatures[0].item()
+            else:
+                current_temp = temperatures[0].item()
+
+            # Update temperature using exponential smoothing
+            new_temperature = current_temp * alpha + avg_error * (1 - alpha)
+            new_temperature = max(new_temperature, min_temperature)
+
+            # Apply the new temperature
+            if isinstance(temperatures, (nn.Parameter, torch.Tensor)):
+                with torch.no_grad():
+                    temperatures.fill_(new_temperature)
+            else:
                 for temp in temperatures:
                     with torch.no_grad():
-                        temp.fill_(temperature)
+                        temp.fill_(new_temperature)
 
         return anneal
 
@@ -160,8 +201,6 @@ class MultiLayerLogicGateNet(nn.Module):
             if self.shared_temperature:
                 result["shared_temperature"] = (
                     self.temperatures.item()
-                    if isinstance(self.temperatures, (nn.Parameter, torch.Tensor))
-                    else self.temperatures[0].item()
                 )
             else:
                 for i, temp in enumerate(self.temperatures):

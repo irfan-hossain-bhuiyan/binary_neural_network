@@ -40,7 +40,7 @@ def train_xor_anneal(
 
     net = MultiLayerLogicGateNet(
         input_dim=2 * num_bits,
-        layer_dims=(64, 32, 64, num_bits),
+        layer_dims=(64, 32,32 ,num_bits),
         use_softmax=True,
         grad_scalar=True,
         odd_initialization=NormalInitWrapper(0.5),
@@ -63,17 +63,13 @@ def train_xor_anneal(
         lr_scheduler_factory=None,
         constraints=[
             MultiLayerLogicGateNet.constraint,
-            MultiLayerLogicGateNet.linear_temperature_anneal_factory(
-                start_temperature=start_temperature,
-                end_temperature=end_temperature,
-                end_epoch=epoch,
-            ),
-           # call_fn_on_plateau(
+            # call_fn_on_plateau(
            #     MultiLayerLogicGateNet.noise_injector_factory(0.3),
            #     patience=15,
            #     min_delta=0.01,
            # ),
         ],
+        on_epoch=MultiLayerLogicGateNet.linear_temperature_anneal_factory(start_temperature,end_temperature,end_epoch=epoch),
         checkpoint_path=None,
         device=device,
         check_grad=check_grad,
@@ -111,4 +107,4 @@ def train_xor_anneal(
 
 
 if __name__ == "__main__":
-    train_xor_anneal(epoch=40, num_bits=16,check_grad=True)
+    train_xor_anneal(epoch=20, num_bits=4,check_grad=True)

@@ -31,6 +31,7 @@ class Trainer:
     device:                     torch.device                           = field(default_factory=resolve_device)
     check_grad:                 bool                                   = False
     constraints:                 Callable[[nn.Module], None] | List[Callable[[nn.Module], None]] | None = None
+    on_epoch:                   Callable[[nn.Module], None] | List[Callable[[nn.Module], None]] | None = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
 
     # ------------------------------------------------------------------
@@ -86,9 +87,9 @@ class Trainer:
                 with torch.no_grad():
                     epoch_error += self.error_fn(logits, yb).item()
                     if self.constraints is not None:
-                        constraints = self.constraints if isinstance(self.constraints, list) else [self.constraints]
+                        on_epoch = self.constraints if isinstance(self.constraints, list) else [self.constraints]
                         kwargs = {"module": unwrapped_model, "model": unwrapped_model, "epoch": epoch, "avg_loss": avg_loss, "avg_error": avg_error, "avg_reg": avg_reg}
-                        for c in constraints:
+                        for c in on_epoch:
                             _call_matching(c, kwargs)
                     
                 epoch_loss += loss.item()
@@ -100,6 +101,11 @@ class Trainer:
             avg_error = epoch_error / num_batches
             avg_reg   = epoch_reg   / num_batches
             avg_stats = _divide_grad_stats(acc_stats, num_batches) if self.check_grad else {}
+            if self.on_epoch is not None:
+                on_epoch = self.on_epoch if isinstance(self.on_epoch, list) else [self.on_epoch]
+                kwargs = {"module": unwrapped_model, "model": unwrapped_model, "epoch": epoch, "avg_loss": avg_loss, "avg_error": avg_error, "avg_reg": avg_reg}
+                for c in on_epoch:
+                    _call_matching(c, kwargs)
 
             # ── Console logging ────────────────────────────────────────
             if print_terminal:
