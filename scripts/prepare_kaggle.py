@@ -158,6 +158,7 @@ Regenerate with: python scripts/prepare_kaggle.py
 import base64
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -212,6 +213,9 @@ def main() -> None:
     result = {"status": "success", "git_commit": COMMIT, "metrics": metrics}
     RESULT_PATH.write_text(json.dumps(result, indent=2))
     print(f"Wrote {RESULT_PATH}")
+    # Remove the extracted source tree so `kaggle kernels output` only
+    # downloads result.json (kept on failure for debugging).
+    shutil.rmtree(REPO_DIR, ignore_errors=True)
 
 
 if __name__ == "__main__":
