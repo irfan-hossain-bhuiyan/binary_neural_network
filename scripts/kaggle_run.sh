@@ -27,6 +27,7 @@ GENERATED="kaggle/train.py"
 KAGGLE_MODE="${KAGGLE_MODE:-single}"
 SUITE="${SUITE:-baseline_suite}"
 SEEDS="${SEEDS:-0}"
+CONFIG="${CONFIG:-research/configs/baseline.json}"
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -50,7 +51,7 @@ fi
 if [ "$KAGGLE_MODE" = "suite" ]; then
     python scripts/prepare_kaggle.py --mode suite --suite "$SUITE" --seeds "$SEEDS"
 else
-    python scripts/prepare_kaggle.py --mode single
+    python scripts/prepare_kaggle.py --mode single --config "$CONFIG"
 fi
 
 test -f "$GENERATED"
