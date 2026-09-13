@@ -33,6 +33,7 @@ class Trainer:
     constraints:                 Callable[[nn.Module], None] | List[Callable[[nn.Module], None]] | None = None
     on_epoch:                   Callable[[nn.Module], None] | List[Callable[[nn.Module], None]] | None = None
     peek:                       Optional[Callable[[], Dict[str, Any]]] = None
+    epoch_callback:             Optional[Callable[[Dict[str, Any]], None]] = None
 
     # ------------------------------------------------------------------
     def train(self, print_terminal: bool = True) -> Checkpoint:
@@ -134,6 +135,20 @@ class Trainer:
                 avg_regularization = avg_reg,
                 grad_stats         = avg_stats,
             ))
+
+            # ── Per-epoch instrumentation callback (no grad) ──────────
+            if self.epoch_callback is not None:
+                try:
+                    self.epoch_callback({
+                        "epoch": epoch,
+                        "avg_loss": avg_loss,
+                        "avg_error": avg_error,
+                        "avg_regularization": avg_reg,
+                        "grad_stats": avg_stats,
+                        "model": unwrapped_model,
+                    })
+                except Exception as e:
+                    CONSOLE.print(f"[yellow]epoch_callback failed at epoch {epoch}: {e}[/yellow]")
 
             # ── Stopping condition ─────────────────────────────────────
             stop_metrics = {

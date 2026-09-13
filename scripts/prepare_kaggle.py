@@ -171,6 +171,7 @@ COMMIT = "__COMMIT__"
 MODE = "__MODE__"
 SUITE = "__SUITE__"
 SEEDS = "__SEEDS__"
+CONFIG = "__CONFIG__"
 
 ARCHIVE_B64 = """__ARCHIVE_B64__"""
 
@@ -200,8 +201,12 @@ def main() -> None:
                "--output", "suite_metrics.json"]
         metrics_file = REPO_DIR / "suite_metrics.json"
     else:
+        cfg = CONFIG if CONFIG and CONFIG != "__CONFIG__" and CONFIG.strip() else "research/configs/baseline.json"
+        # allow bare name like "recovered_discretizing_baseline" -> "research/configs/<name>.json"
+        if "/" not in cfg and not cfg.endswith(".json"):
+            cfg = f"research/configs/{cfg}.json"
         cmd = [sys.executable, "research/run_experiment.py",
-               "--config", "research/configs/baseline.json",
+               "--config", cfg,
                "--output", "single_metrics.json"]
         metrics_file = REPO_DIR / "single_metrics.json"
     proc = subprocess.run(
@@ -257,6 +262,8 @@ def main() -> None:
                         help="suite config name for --mode suite")
     parser.add_argument("--seeds", default="0",
                         help="comma-separated seeds for --mode suite")
+    parser.add_argument("--config", default="research/configs/baseline.json",
+                        help="config for --mode single")
     args = parser.parse_args()
 
     root = Path(
@@ -298,6 +305,7 @@ def main() -> None:
         .replace("__MODE__", args.mode)
         .replace("__SUITE__", args.suite)
         .replace("__SEEDS__", args.seeds)
+        .replace("__CONFIG__", args.config)
         .replace("__ARCHIVE_B64__", b64)
     )
     out_path = root / GENERATED_BOOTSTRAP

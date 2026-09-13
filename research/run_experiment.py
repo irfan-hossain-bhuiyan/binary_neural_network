@@ -216,6 +216,68 @@ def summarize_gradients(grad_stats: dict) -> dict:
     }
 
 
+def compute_polarization_stats(model: nn.Module) -> dict:
+    """Distance-to-binary and corner-fraction metrics on effective [0,1] params."""
+    with torch.no_grad():
+        w_all = []
+        b_all = []
+        for layer in getattr(model, "expectation_layers"):
+            w_all.append(layer.actual_weight().detach().float().cpu().reshape(-1))
+            b_all.append(layer.actual_bias().detach().float().cpu().reshape(-1))
+        if not w_all:
+            return {}
+        w = torch.cat(w_all)
+        b = torch.cat(b_all)
+
+        def corner_stats(x: torch.Tensor) -> dict:
+            return {
+                "D": float(torch.minimum(x, 1.0 - x).mean().item()),
+                "corner_01": float(((x <= 0.01) | (x >= 0.99)).float().mean().item()),
+                "corner_05": float(((x <= 0.05) | (x >= 0.95)).float().mean().item()),
+                "corner_10": float(((x <= 0.10) | (x >= 0.90)).float().mean().item()),
+                "middle_40_60": float(((x > 0.4) & (x < 0.6)).float().mean().item()),
+            }
+
+        w_s = corner_stats(w)
+        b_s = corner_stats(b)
+        combined = torch.cat([w, b])
+        c_s = corner_stats(combined)
+        return {
+            "D_w": w_s["D"],
+            "D_b": b_s["D"],
+            "D_combined": c_s["D"],
+            "w_corner_01": w_s["corner_01"],
+            "w_corner_05": w_s["corner_05"],
+            "w_corner_10": w_s["corner_10"],
+            "w_middle_40_60": w_s["middle_40_60"],
+            "b_corner_01": b_s["corner_01"],
+            "b_corner_05": b_s["corner_05"],
+            "b_corner_10": b_s["corner_10"],
+            "b_middle_40_60": b_s["middle_40_60"],
+            "combined_corner_01": c_s["corner_01"],
+            "combined_corner_05": c_s["corner_05"],
+            "combined_corner_10": c_s["corner_10"],
+        }
+
+
+def get_temperatures(model: nn.Module) -> dict:
+    with torch.no_grad():
+        temps = getattr(model, "temperatures", None)
+        if temps is None:
+            return {}
+        if isinstance(temps, (torch.Tensor, nn.Parameter)):
+            v = float(temps.detach().cpu().item()) if temps.numel() == 1 else [float(x) for x in temps.detach().cpu().tolist()]
+            return {"temperature_0": v} if isinstance(v, float) else {f"temperature_{i}": x for i, x in enumerate(v)}
+        # list
+        out = {}
+        for i, t in enumerate(temps):
+            try:
+                out[f"temperature_{i}"] = float(t.detach().cpu().item())
+            except Exception:
+                out[f"temperature_{i}"] = None
+        return out
+
+
 def compute_circuit_stats(discrete_net: nn.Module) -> dict:
     """Boolean circuit-size metrics from the discretized network.
 
@@ -257,6 +319,70 @@ def compute_circuit_stats(discrete_net: nn.Module) -> dict:
     }
 
 
+def _build_regularizer(training_cfg: dict):
+    reg_spec = training_cfg.get("regularizer")
+    if reg_spec is not None:
+        rtype = reg_spec.get("type")
+        if rtype == "regularization_factory2":
+            from regularizers import regularization_factory2
+            return regularization_factory2(
+                disc_lambda=float(reg_spec.get("disc_lambda", 0.5)),
+                tau_lambda=float(reg_spec.get("tau_lambda", 0.3)),
+                patience=int(reg_spec.get("patience", 15)),
+                min_err=float(reg_spec.get("min_err", 0.01)),
+                isolate_on_plateau=bool(reg_spec.get("isolate_on_plateau", True)),
+            )
+        if rtype == "regularization_factory":
+            from regularizers import regularization_factory
+            return regularization_factory(
+                l1_lambda=float(reg_spec.get("l1_lambda", 0.1)),
+                disc_lambda=float(reg_spec.get("disc_lambda", 0.1)),
+                tau_lambda=float(reg_spec.get("tau_lambda", 0.1)),
+                patience=int(reg_spec.get("patience", 10)),
+                min_err=float(reg_spec.get("min_err", 0.01)),
+            )
+        raise ValueError(f"Unknown regularizer type {rtype!r}")
+    # legacy variance path
+    vw = training_cfg.get("variance_weight")
+    if vw is not None:
+        vw = float(vw)
+        def variance_regularizer(module: nn.Module):
+            return vw * MultiLayerLogicGateNet.batch_variance_regularization(module)
+        return variance_regularizer
+    # no regularization
+    return None
+
+
+def _build_constraints(training_cfg: dict) -> list:
+    constraints: list = [MultiLayerLogicGateNet.constraint]
+    for c in training_cfg.get("constraints", []) or []:
+        if isinstance(c, dict) and c.get("type") == "noise_on_plateau":
+            from stopping_utils import call_fn_on_plateau
+            constraints.append(
+                call_fn_on_plateau(
+                    MultiLayerLogicGateNet.noise_injector_factory(float(c.get("std", 0.3))),
+                    patience=int(c.get("patience", 15)),
+                    min_delta=float(c.get("min_delta", 0.01)),
+                )
+            )
+        elif isinstance(c, str) and c == "clamp_weights_bias_temperature":
+            pass  # already added
+    return constraints
+
+
+def _build_on_epoch(training_cfg: dict, epochs: int):
+    # recovered regime has no annealing; legacy has start/end temperature
+    if training_cfg.get("regularizer") is not None:
+        return None
+    st = training_cfg.get("start_temperature")
+    et = training_cfg.get("end_temperature")
+    if st is not None and et is not None:
+        return MultiLayerLogicGateNet.linear_temperature_anneal_factory(
+            float(st), float(et), end_epoch=epochs
+        )
+    return None
+
+
 def run_single(
     task_name: str,
     task_params: dict,
@@ -277,7 +403,6 @@ def run_single(
     eval_mode = task["eval_mode"]
 
     if eval_mode == FULL_TRUTH_TABLE:
-        # Circuit recovery: train AND evaluate on the complete truth table.
         x_train, y_train = X_all, Y_all
         x_eval, y_eval = X_all, Y_all
     else:
@@ -288,11 +413,6 @@ def run_single(
 
     net = build_model(model_cfg, task["input_dim"], task["output_dim"]).to(device)
 
-    variance_weight = float(training_cfg.get("variance_weight", 1e-3))
-
-    def variance_regularizer(module: nn.Module):
-        return variance_weight * MultiLayerLogicGateNet.batch_variance_regularization(module)
-
     epochs = int(training_cfg.get("epochs", 20))
     batch_size = int(training_cfg.get("batch_size", 256))
     opt_name = training_cfg.get("optimizer", "Adam")
@@ -302,6 +422,86 @@ def run_single(
     if loss_name not in LOSSES:
         raise ValueError(f"Unsupported loss: {loss_name!r}")
 
+    regularization_fn = _build_regularizer(training_cfg)
+    constraints = _build_constraints(training_cfg)
+    on_epoch = _build_on_epoch(training_cfg, epochs)
+
+    # Per-epoch trajectory (instrumentation, no grad).
+    trajectory: list[dict] = []
+    discrete_eval_epochs = {1, 5, 10, 20, 50, 100, 200, 300, epochs}
+    # Also include final epoch always.
+
+    def epoch_callback(state: dict) -> None:
+        epoch = state["epoch"]
+        avg_loss = state["avg_loss"]
+        avg_reg = state["avg_regularization"]
+        avg_err = state["avg_error"]
+        grad_stats = state["grad_stats"]
+        model = state["model"]
+        with torch.no_grad():
+            pol = compute_polarization_stats(model)
+            temps = get_temperatures(model)
+            # gradient ratio from grad_stats
+            summary = summarize_gradients(grad_stats)
+            # continuous accuracy every 10 epochs or at eval epochs to limit cost
+            do_cont = (epoch in discrete_eval_epochs) or (epoch % 10 == 0) or (epoch == 1)
+            cont_bit = cont_exact = None
+            if do_cont:
+                eval_set = (x_eval.to(device), y_eval.to(device))
+                cont_bit = evaluate_accuracy(
+                    getattr(model, "module", model) if hasattr(model, "module") else model,  # type: ignore
+                    eval_set, threshold=0.5, device=device, sample_wise_comparison=False
+                )
+                cont_exact = evaluate_accuracy(
+                    getattr(model, "module", model) if hasattr(model, "module") else model,  # type: ignore
+                    eval_set, threshold=0.5, device=device, sample_wise_comparison=True
+                )
+            # discrete clone evaluation (never mutate training model)
+            disc_bit = disc_exact = None
+            if epoch in discrete_eval_epochs:
+                try:
+                    # to_discrete is on the continuous model; use its device copy
+                    discrete_clone: Any = model.to_discrete(threshold=discretization_threshold).to(device)
+                    discrete_clone.eval()
+                    n_eval = x_eval.shape[0]
+                    bit_correct = 0
+                    bit_total = 0
+                    exact_correct = 0
+                    with torch.no_grad():
+                        for i in range(0, n_eval, batch_size):
+                            xb = x_eval[i:i + batch_size].to(device).to(torch.bool)
+                            yb = y_eval[i:i + batch_size].to(device).to(torch.bool)
+                            preds = discrete_clone(xb).to(torch.bool)
+                            bit_correct += (preds == yb).sum().item()
+                            bit_total += preds.numel()
+                            exact_correct += (preds == yb).all(dim=-1).sum().item()
+                    disc_bit = bit_correct / bit_total if bit_total else 0.0
+                    disc_exact = exact_correct / n_eval if n_eval else 0.0
+                except Exception:
+                    pass
+            entry: dict[str, Any] = {
+                "epoch": epoch,
+                "avg_loss": avg_loss,
+                "avg_error": avg_err,
+                "avg_regularization": avg_reg,
+                "task_loss": avg_loss - avg_reg,
+                "regularization_loss": avg_reg,
+                "total_loss": avg_loss,
+                "D_w": pol.get("D_w"),
+                "D_b": pol.get("D_b"),
+                "D_combined": pol.get("D_combined"),
+                "polarization": pol,
+                "temperatures": temps,
+                "gradient_summary": summary,
+            }
+            if cont_bit is not None:
+                entry["continuous_bit_accuracy"] = cont_bit
+                entry["continuous_exact_accuracy"] = cont_exact
+            if disc_bit is not None:
+                entry["discrete_bit_accuracy"] = disc_bit
+                entry["discrete_exact_accuracy"] = disc_exact
+            trajectory.append(entry)
+
     trainer = Trainer(
         dataset=(x_train, y_train),
         stop_on=stop_on_epoch(epochs),
@@ -310,18 +510,15 @@ def run_single(
         loss_fn=LOSSES[loss_name](),
         optimizer_cls=OPTIMIZERS[opt_name],
         optimizer_kwargs={"lr": float(training_cfg.get("lr", 0.05))},
-        regularization_fn=variance_regularizer,
+        regularization_fn=regularization_fn,
         lr_scheduler_factory=None,
-        constraints=[MultiLayerLogicGateNet.constraint],
-        on_epoch=MultiLayerLogicGateNet.linear_temperature_anneal_factory(
-            float(training_cfg.get("start_temperature", 1.0)),
-            float(training_cfg.get("end_temperature", 0.01)),
-            end_epoch=epochs,
-        ),
+        constraints=constraints,
+        on_epoch=on_epoch,
         checkpoint_path=None,
         device=device,
         check_grad=True,
         peek=None,
+        epoch_callback=epoch_callback,
     )
 
     ckpt = trainer.train(print_terminal=False)
@@ -428,6 +625,8 @@ def run_single(
         "activation_stats": activation_stats,
         "parameter_stats": parameter_stats,
         "circuit_stats": circuit_stats,
+        "trajectory": trajectory,
+        "final_polarization": compute_polarization_stats(unwrapped),
     }
     return metrics
 
