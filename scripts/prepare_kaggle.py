@@ -201,7 +201,7 @@ def main() -> None:
                "--output", "suite_metrics.json"]
         metrics_file = REPO_DIR / "suite_metrics.json"
     else:
-        cfg = CONFIG if CONFIG and CONFIG != "__CONFIG__" and CONFIG.strip() else "research/configs/baseline.json"
+        cfg = CONFIG if CONFIG and CONFIG.strip() else "research/configs/baseline.json"
         # allow bare name like "recovered_discretizing_baseline" -> "research/configs/<name>.json"
         if "/" not in cfg and not cfg.endswith(".json"):
             cfg = f"research/configs/{cfg}.json"
