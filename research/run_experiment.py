@@ -412,6 +412,8 @@ def run_single(
         )
 
     net = build_model(model_cfg, task["input_dim"], task["output_dim"]).to(device)
+    # Preserve explicit train_ratio/threshold for reporting (even for full truth table).
+    _train_ratio = float(task.get("train_ratio", 0.8)) if eval_mode != FULL_TRUTH_TABLE else 1.0
 
     epochs = int(training_cfg.get("epochs", 20))
     batch_size = int(training_cfg.get("batch_size", 256))
@@ -426,9 +428,52 @@ def run_single(
     constraints = _build_constraints(training_cfg)
     on_epoch = _build_on_epoch(training_cfg, epochs)
 
+    # ---- Epoch-0 pre-training measurement (observational only, no grad) ----
+    initial_state: dict[str, Any] = {}
+    with torch.no_grad():
+        pol0 = compute_polarization_stats(net)
+        temps0 = get_temperatures(net)
+        tau0 = {k.replace("temperature", "tau"): (1.0 / v if isinstance(v, float) and v else None) for k, v in temps0.items()}
+        eval_set0 = (x_eval.to(device), y_eval.to(device))
+        cont_bit0 = evaluate_accuracy(net, eval_set0, threshold=0.5, device=device, sample_wise_comparison=False)
+        cont_exact0 = evaluate_accuracy(net, eval_set0, threshold=0.5, device=device, sample_wise_comparison=True)
+        # discrete clone of initial model
+        try:
+            disc0: Any = net.to_discrete(threshold=discretization_threshold).to(device)
+            disc0.eval()
+            n0 = x_eval.shape[0]
+            bit_c0 = 0; bit_t0 = 0; exact_c0 = 0
+            with torch.no_grad():
+                for i in range(0, n0, batch_size):
+                    xb = x_eval[i:i+batch_size].to(device).to(torch.bool)
+                    yb = y_eval[i:i+batch_size].to(device).to(torch.bool)
+                    preds = disc0(xb).to(torch.bool)
+                    bit_c0 += (preds == yb).sum().item()
+                    bit_t0 += preds.numel()
+                    exact_c0 += (preds == yb).all(dim=-1).sum().item()
+            disc_bit0 = bit_c0 / bit_t0 if bit_t0 else 0.0
+            disc_exact0 = exact_c0 / n0 if n0 else 0.0
+        except Exception:
+            disc_bit0 = disc_exact0 = None
+        initial_state = {
+            "epoch": 0,
+            "train_ratio": _train_ratio,
+            "discretization_threshold": discretization_threshold,
+            "D_w": pol0.get("D_w"),
+            "D_b": pol0.get("D_b"),
+            "D_combined": pol0.get("D_combined"),
+            "polarization": pol0,
+            "temperatures": temps0,
+            "taus": tau0,
+            "continuous_bit_accuracy": cont_bit0,
+            "continuous_exact_accuracy": cont_exact0,
+            "discrete_bit_accuracy": disc_bit0,
+            "discrete_exact_accuracy": disc_exact0,
+        }
+
     # Per-epoch trajectory (instrumentation, no grad).
     trajectory: list[dict] = []
-    discrete_eval_epochs = {1, 5, 10, 20, 50, 100, 200, 300, epochs}
+    discrete_eval_epochs = {1, 5, 10, 20, 50, 100, 150, 200, 250, 300, epochs}
     # Also include final epoch always.
 
     def epoch_callback(state: dict) -> None:
@@ -626,7 +671,10 @@ def run_single(
         "parameter_stats": parameter_stats,
         "circuit_stats": circuit_stats,
         "trajectory": trajectory,
+        "initial_state": initial_state,
         "final_polarization": compute_polarization_stats(unwrapped),
+        "train_ratio": _train_ratio,
+        "discretization_threshold": discretization_threshold,
     }
     return metrics
 
