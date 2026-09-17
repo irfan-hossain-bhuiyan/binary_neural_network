@@ -10,6 +10,7 @@ Boolean circuit-size metrics — all returned as plain Python values.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import random
@@ -65,6 +66,13 @@ def _resolve_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
+
+
+def _hardmax_clone(model: nn.Module) -> nn.Module:
+    clone = copy.deepcopy(model)
+    for layer in getattr(clone, "expectation_layers", []):
+        layer.use_softmax = False
+    return clone
 
 
 def _to_float(value: Any) -> float | None:
@@ -572,6 +580,9 @@ def run_single(
         eval_set0 = (x_eval.to(device), y_eval.to(device))
         cont_bit0 = evaluate_accuracy(net, eval_set0, threshold=0.5, device=device, sample_wise_comparison=False)
         cont_exact0 = evaluate_accuracy(net, eval_set0, threshold=0.5, device=device, sample_wise_comparison=True)
+        hard0 = _hardmax_clone(net).to(device)
+        hard_bit0 = evaluate_accuracy(hard0, eval_set0, threshold=0.5, device=device, sample_wise_comparison=False)
+        hard_exact0 = evaluate_accuracy(hard0, eval_set0, threshold=0.5, device=device, sample_wise_comparison=True)
         # discrete clone of initial model
         try:
             disc0: Any = net.to_discrete(threshold=discretization_threshold).to(device)
@@ -602,6 +613,8 @@ def run_single(
             "taus": tau0,
             "continuous_bit_accuracy": cont_bit0,
             "continuous_exact_accuracy": cont_exact0,
+            "continuous_hardmax_bit_accuracy": hard_bit0,
+            "continuous_hardmax_exact_accuracy": hard_exact0,
             "discrete_bit_accuracy": disc_bit0,
             "discrete_exact_accuracy": disc_exact0,
             "discretization_ready": bool(
@@ -641,6 +654,7 @@ def run_single(
             # continuous accuracy every 10 epochs or at eval epochs to limit cost
             do_cont = (epoch in discrete_eval_epochs) or (epoch == 1)
             cont_bit = cont_exact = None
+            hard_bit = hard_exact = None
             if do_cont:
                 eval_set = (x_eval.to(device), y_eval.to(device))
                 cont_bit = evaluate_accuracy(
@@ -651,6 +665,11 @@ def run_single(
                     getattr(model, "module", model) if hasattr(model, "module") else model,  # type: ignore
                     eval_set, threshold=0.5, device=device, sample_wise_comparison=True
                 )
+                hard_model = _hardmax_clone(getattr(model, "module", model)).to(device)
+                hard_bit = evaluate_accuracy(hard_model, eval_set, threshold=0.5,
+                                             device=device, sample_wise_comparison=False)
+                hard_exact = evaluate_accuracy(hard_model, eval_set, threshold=0.5,
+                                               device=device, sample_wise_comparison=True)
             # discrete clone evaluation (never mutate training model)
             disc_bit = disc_exact = None
             if epoch in discrete_eval_epochs:
@@ -695,6 +714,8 @@ def run_single(
             if cont_bit is not None:
                 entry["continuous_bit_accuracy"] = cont_bit
                 entry["continuous_exact_accuracy"] = cont_exact
+                entry["continuous_hardmax_bit_accuracy"] = hard_bit
+                entry["continuous_hardmax_exact_accuracy"] = hard_exact
             if disc_bit is not None:
                 entry["discrete_bit_accuracy"] = disc_bit
                 entry["discrete_exact_accuracy"] = disc_exact
@@ -723,14 +744,20 @@ def run_single(
     history = ckpt.training_history
     epochs_completed = len(history)
     final_loss = history[-1].avg_loss if history else None
+    unwrapped: Any = getattr(ckpt.model, "module", ckpt.model)
 
     eval_set = (x_eval.to(device), y_eval.to(device))
-    cont_bit = evaluate_accuracy(ckpt.model, eval_set, threshold=0.5,
+    cont_bit = evaluate_accuracy(unwrapped, eval_set, threshold=0.5,
                                  device=device, sample_wise_comparison=False)
-    cont_exact = evaluate_accuracy(ckpt.model, eval_set, threshold=0.5,
+    cont_exact = evaluate_accuracy(unwrapped, eval_set, threshold=0.5,
                                    device=device, sample_wise_comparison=True)
 
-    unwrapped: Any = getattr(ckpt.model, "module", ckpt.model)
+    hard_model = _hardmax_clone(unwrapped).to(device)
+    hard_bit = evaluate_accuracy(hard_model, eval_set, threshold=0.5,
+                                 device=device, sample_wise_comparison=False)
+    hard_exact = evaluate_accuracy(hard_model, eval_set, threshold=0.5,
+                                   device=device, sample_wise_comparison=True)
+
     discrete_model: Any = unwrapped.to_discrete(
         threshold=discretization_threshold).to(device)
     discrete_model.eval()
@@ -804,6 +831,8 @@ def run_single(
         "continuous_accuracy": cont_bit,
         "continuous_bit_accuracy": cont_bit,
         "continuous_exact_accuracy": cont_exact,
+        "continuous_hardmax_bit_accuracy": hard_bit,
+        "continuous_hardmax_exact_accuracy": hard_exact,
         "discrete_bit_accuracy": disc_bit,
         "discrete_accuracy": disc_exact,
         "discrete_exact_accuracy": disc_exact,
@@ -817,6 +846,7 @@ def run_single(
         "discretization_ready_first_epoch": next(
             (entry["epoch"] for entry in trajectory if entry.get("discretization_ready")), None),
         "continuous_discrete_gap": cont_exact - disc_exact,
+        "hardmax_discrete_gap": hard_exact - disc_exact,
         # Explicit truth-table recovery keys for full-table tasks.
         "truth_table_continuous_bit_accuracy": cont_bit if eval_mode == FULL_TRUTH_TABLE else None,
         "truth_table_continuous_exact_accuracy": cont_exact if eval_mode == FULL_TRUTH_TABLE else None,
