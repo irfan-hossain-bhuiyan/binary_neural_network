@@ -34,7 +34,7 @@ from torch.optim import Adam
 from boolean_tasks import FULL_TRUTH_TABLE, build_task
 from eval_utils import evaluate_accuracy
 from initializers import NormalInitWrapper
-from models import MultiLayerLogicGateNet
+from models import MultiLayerLogicGateNet, ModernLogicGateNet
 from prelude import Trainer, split_dataset, stop_on_epoch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -118,6 +118,25 @@ def init_from_spec(spec: dict):
 
 
 def build_model(model_cfg: dict, input_dim: int, output_dim: int) -> nn.Module:
+    if model_cfg.get("architecture") == "modern":
+        width = int(model_cfg.get("width", 64))
+        blocks = int(model_cfg.get("num_residual_blocks", 2))
+        count = 2 + 2 * blocks
+        specs = model_cfg.get("layer_initializers")
+        inits = [init_from_spec(s) for s in specs] if specs is not None else None
+        if inits is not None and len(inits) != count:
+            raise ValueError(f"modern model needs {count} explicit layer initializers")
+        return ModernLogicGateNet(
+            input_dim=input_dim, output_dim=output_dim, width=width,
+            num_residual_blocks=blocks,
+            init_temperature=float(model_cfg.get("init_temperature", 1.0)),
+            learnable_tau=bool(model_cfg.get("learnable_tau", False)),
+            use_softmax=bool(model_cfg.get("use_softmax", True)),
+            layer_initializations=inits,
+            bias_initialization=init_from_spec(model_cfg.get("bias_init", {"type": "normal", "mean": 1.0})),
+            grad_scalar=bool(model_cfg.get("grad_scalar", True)),
+            residual_enabled=bool(model_cfg.get("residual_enabled", True)),
+        )
     hidden = [int(h) for h in model_cfg.get("hidden_dims", [64, 32, 32])]
     return MultiLayerLogicGateNet(
         input_dim=input_dim,
@@ -187,6 +206,97 @@ def compute_activation_stats(
     return stats
 
 
+def compute_residual_diagnostics(model: nn.Module, X: torch.Tensor, Y: torch.Tensor,
+                                device: torch.device, batch_size: int = 512) -> dict:
+    """Measure branch distributions, direct XOR gain, flips, and activation grads."""
+    blocks = list(getattr(model, "blocks", []))
+    if not blocks:
+        return {}
+    from collections import defaultdict
+    captured: dict[int, dict[str, list[torch.Tensor]]] = {
+        i: defaultdict(list) for i in range(len(blocks))
+    }
+    handles = []
+    for i, block in enumerate(blocks):
+        handles.extend([
+            block.register_forward_pre_hook(lambda _m, args, i=i: captured[i]["input"].append(args[0].detach().cpu())),
+            block.layer1.register_forward_hook(lambda _m, _a, out, i=i: captured[i]["h1"].append(out.detach().cpu())),
+            block.layer2.register_forward_hook(lambda _m, _a, out, i=i: captured[i]["h2"].append(out.detach().cpu())),
+            block.register_forward_hook(lambda _m, _a, out, i=i: captured[i]["output"].append(out.detach().cpu())),
+        ])
+    model.eval()
+    try:
+        with torch.no_grad():
+            for start in range(0, X.shape[0], batch_size):
+                model(X[start:start + batch_size].to(device))
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    def distribution(t: torch.Tensor) -> dict:
+        t = t.float().reshape(-1)
+        tc = t.clamp(1e-6, 1 - 1e-6)
+        return {
+            "mean": t.mean().item(), "variance": t.var(unbiased=False).item(),
+            "fraction_near_0": (t <= 0.05).float().mean().item(),
+            "fraction_near_1": (t >= 0.95).float().mean().item(),
+            "fraction_middle": ((t > 0.25) & (t < 0.75)).float().mean().item(),
+            "binary_entropy": (-(tc * tc.log2() + (1-tc) * (1-tc).log2())).mean().item(),
+        }
+
+    result = {}
+    for i, values in captured.items():
+        merged = {k: torch.cat(v, dim=0) for k, v in values.items()}
+        gain = (1 - 2 * merged["h2"]).abs().reshape(-1)
+        sorted_gain = gain.sort().values
+        def q(p: float) -> float:
+            return float(sorted_gain[min(int(p * (len(sorted_gain)-1)), len(sorted_gain)-1)].item())
+        hard_x = merged["input"] >= 0.5
+        hard_f = merged["h2"] >= 0.5
+        hard_y = merged["output"] >= 0.5
+        result[f"block_{i}"] = {
+            "activations": {k: distribution(v) for k, v in merged.items()},
+            "direct_gain": {"mean": gain.mean().item(), "median": q(0.5), "p10": q(0.1),
+                            "p25": q(0.25), "p75": q(0.75), "p90": q(0.9),
+                            "fraction_lt_0_1": (gain < 0.1).float().mean().item(),
+                            "fraction_lt_0_25": (gain < 0.25).float().mean().item(),
+                            "fraction_gt_0_75": (gain > 0.75).float().mean().item(),
+                            "fraction_gt_0_9": (gain > 0.9).float().mean().item()},
+            "xor_flip_fraction": hard_f.float().mean().item(),
+            "output_differs_from_input_fraction": (hard_x ^ hard_y).float().mean().item(),
+        }
+
+    # Actual activation gradient entering and leaving each block on a diagnostic
+    # task batch, independent of the direct-derivative proxy above.
+    grad_capture: dict[int, dict[str, torch.Tensor]] = {i: {} for i in range(len(blocks))}
+    gh = []
+    for i, block in enumerate(blocks):
+        def pre(_m, args, i=i):
+            v = args[0]
+            if v.requires_grad:
+                v.retain_grad(); grad_capture[i]["input"] = v
+        def post(_m, _args, out, i=i):
+            if out.requires_grad:
+                out.retain_grad(); grad_capture[i]["output"] = out
+        gh.extend([block.register_forward_pre_hook(pre), block.register_forward_hook(post)])
+    model.zero_grad(set_to_none=True)
+    xb = X[:min(len(X), batch_size)].to(device)
+    yb = Y[:min(len(Y), batch_size)].to(device)
+    pred = model(xb)
+    nn.functional.mse_loss(pred, yb).backward()
+    for h in gh:
+        h.remove()
+    for i in range(len(blocks)):
+        vals = {}
+        for side in ("input", "output"):
+            act = grad_capture[i].get(side)
+            g = act.grad if act is not None else None
+            vals[side] = {"mean_abs_grad": float(g.abs().mean().item()),
+                          "gradient_norm": float(g.norm().item())} if g is not None else None
+        result[f"block_{i}"]["actual_activation_gradients"] = vals
+    return result
+
+
 def summarize_gradients(grad_stats: dict) -> dict:
     """Derive per-run layer-level gradient summary (method in GRAD_SUMMARY_METHOD)."""
     per_layer: dict[int, list[float]] = {}
@@ -214,6 +324,30 @@ def summarize_gradients(grad_stats: dict) -> dict:
         "minimum_layer_mean_abs_grad": min(vals),
         "maximum_layer_mean_abs_grad": max(vals),
     }
+
+
+def summarize_modern_layer_gradients(grad_stats: dict) -> dict:
+    """Group ModernLogicGateNet parameter gradients into its named graph layers."""
+    groups: dict[str, list[float]] = {}
+    for name, stat in grad_stats.items():
+        if not (name.endswith(".weight") or name.endswith(".bias")):
+            continue
+        if name.startswith("stem."):
+            label = "stem"
+        elif name.startswith("head."):
+            label = "head"
+        elif name.startswith("blocks."):
+            parts = name.split(".")
+            label = f"block_{parts[1]}.{parts[2]}"
+        else:
+            continue
+        value = _to_float(getattr(stat, "mean_abs", None))
+        if value is not None:
+            groups.setdefault(label, []).append(value)
+    means = {k: sum(v)/len(v) for k, v in groups.items() if v}
+    ordered = list(means.values())
+    return {"layer_mean_abs_grad": means,
+            "first_last_gradient_ratio": ordered[0]/(ordered[-1]+1e-12) if len(ordered) > 1 else None}
 
 
 def compute_polarization_stats(model: nn.Module) -> dict:
@@ -415,8 +549,9 @@ def run_single(
     # Preserve explicit train_ratio/threshold for reporting (even for full truth table).
     _train_ratio = float(task.get("train_ratio", 0.8)) if eval_mode != FULL_TRUTH_TABLE else 1.0
 
-    epochs = int(training_cfg.get("epochs", 20))
+    epochs = int(training_cfg.get("max_epochs", training_cfg.get("epochs", 20)))
     batch_size = int(training_cfg.get("batch_size", 256))
+    check_every = max(1, int(training_cfg.get("check_every", 10)))
     opt_name = training_cfg.get("optimizer", "Adam")
     loss_name = training_cfg.get("loss", "MSELoss")
     if opt_name not in OPTIMIZERS:
@@ -474,6 +609,7 @@ def run_single(
     # Per-epoch trajectory (instrumentation, no grad).
     trajectory: list[dict] = []
     discrete_eval_epochs = {1, 5, 10, 20, 50, 100, 150, 200, 250, 300, epochs}
+    discrete_eval_epochs.update(range(check_every, epochs + 1, check_every))
     # Also include final epoch always.
 
     def epoch_callback(state: dict) -> None:
@@ -485,11 +621,15 @@ def run_single(
         model = state["model"]
         with torch.no_grad():
             pol = compute_polarization_stats(model)
+            ready = bool(pol.get("D_w", float("inf")) <= 0.01 and
+                         pol.get("D_b", float("inf")) <= 0.01 and
+                         pol.get("w_corner_05", 0.0) >= 0.95 and
+                         pol.get("b_corner_05", 0.0) >= 0.95)
             temps = get_temperatures(model)
             # gradient ratio from grad_stats
             summary = summarize_gradients(grad_stats)
             # continuous accuracy every 10 epochs or at eval epochs to limit cost
-            do_cont = (epoch in discrete_eval_epochs) or (epoch % 10 == 0) or (epoch == 1)
+            do_cont = (epoch in discrete_eval_epochs) or (epoch == 1)
             cont_bit = cont_exact = None
             if do_cont:
                 eval_set = (x_eval.to(device), y_eval.to(device))
@@ -536,7 +676,10 @@ def run_single(
                 "D_b": pol.get("D_b"),
                 "D_combined": pol.get("D_combined"),
                 "polarization": pol,
+                "discretization_ready": ready,
+                "diagnostic_discrete_status": "ready_evaluation" if ready else "diagnostic_only",
                 "temperatures": temps,
+                "taus": {k.replace("temperature", "tau"): (1.0 / v if isinstance(v, float) and v else None) for k, v in temps.items()},
                 "gradient_summary": summary,
             }
             if cont_bit is not None:
@@ -609,6 +752,7 @@ def run_single(
         history[-1].grad_stats if history else {})
 
     activation_stats = compute_activation_stats(unwrapped, x_eval, device)
+    residual_diagnostics = compute_residual_diagnostics(unwrapped, x_eval, y_eval, device)
 
     parameter_stats: dict = {}
     with torch.no_grad():
@@ -667,12 +811,21 @@ def run_single(
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "gradient_stats": gradient_stats,
         "gradient_summary": gradient_summary,
+        "named_layer_gradient_summary": summarize_modern_layer_gradients(
+            history[-1].grad_stats if history else {}),
         "activation_stats": activation_stats,
+        "residual_diagnostics": residual_diagnostics,
         "parameter_stats": parameter_stats,
         "circuit_stats": circuit_stats,
         "trajectory": trajectory,
         "initial_state": initial_state,
         "final_polarization": compute_polarization_stats(unwrapped),
+        "discretization_ready": bool(
+            compute_polarization_stats(unwrapped).get("D_w", float("inf")) <= 0.01 and
+            compute_polarization_stats(unwrapped).get("D_b", float("inf")) <= 0.01 and
+            compute_polarization_stats(unwrapped).get("w_corner_05", 0.0) >= 0.95 and
+            compute_polarization_stats(unwrapped).get("b_corner_05", 0.0) >= 0.95
+        ),
         "train_ratio": _train_ratio,
         "discretization_threshold": discretization_threshold,
     }

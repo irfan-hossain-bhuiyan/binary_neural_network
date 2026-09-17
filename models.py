@@ -7,7 +7,7 @@ from typing import Any, Callable, cast
 import torch
 import torch.nn as nn
 
-from layers import OrNorGateLayer
+from layers import OrNorGateLayer, XorResidualLogicBlock
 
 
 class MultiLayerLogicGateNet(nn.Module):
@@ -263,3 +263,80 @@ class MultiLayerLogicGateNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.sequential(x)
+
+
+class ModernLogicGateNet(nn.Module):
+    """Stem + width-preserving two-layer XOR residual blocks + output head.
+
+    Setting ``residual_enabled=False`` retains exactly the same logic layers and
+    parameter shapes for the deep no-residual control.
+    """
+
+    def __init__(self, input_dim: int, output_dim: int, width: int = 64,
+                 num_residual_blocks: int = 2, init_temperature: float = 1.0,
+                 learnable_tau: bool = False, use_softmax: bool = True,
+                 layer_initializations: list[Callable[..., Any]] | None = None,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 grad_scalar: bool = True, residual_enabled: bool = True):
+        super().__init__()
+        if width <= 0 or num_residual_blocks < 0:
+            raise ValueError("width must be positive and number of residual blocks nonnegative")
+        self.input_dim, self.output_dim = input_dim, output_dim
+        self.width, self.num_residual_blocks = width, num_residual_blocks
+        self.residual_enabled = residual_enabled
+        count = 2 + 2 * num_residual_blocks  # stem, each block's two layers, head
+        if layer_initializations is None:
+            def _alternating_init(index: int):
+                mean = 1.0 if index % 2 == 0 else 0.0
+                return lambda tensor: nn.init.normal_(tensor, mean=mean)
+            layer_initializations = [_alternating_init(i) for i in range(count)]
+        if len(layer_initializations) != count:
+            raise ValueError(f"expected {count} layer initializers, got {len(layer_initializations)}")
+        self.temperatures = nn.ParameterList(
+            [nn.Parameter(torch.tensor(float(init_temperature))) for _ in range(count)]
+        ) if learnable_tau else nn.ParameterList()
+        self.stem = OrNorGateLayer(input_dim, width, self._temp(0, init_temperature), learnable_tau,
+                                   use_softmax, layer_initializations[0], bias_initialization, grad_scalar)
+        self.blocks = nn.ModuleList()
+        for block_idx in range(num_residual_blocks):
+            base = 1 + 2 * block_idx
+            block = XorResidualLogicBlock(width, temperature=self._temp(base, init_temperature),
+                learnable_tau=learnable_tau, use_softmax=use_softmax,
+                weight_initialization=layer_initializations[base], bias_initialization=bias_initialization,
+                grad_scalar=grad_scalar, residual_enabled=residual_enabled)
+            # Separate per-layer tau where requested.
+            if learnable_tau:
+                block.layer2.temperature = self.temperatures[base + 1]
+            self.blocks.append(block)
+        head_idx = count - 1
+        self.head = OrNorGateLayer(width, output_dim, self._temp(head_idx, init_temperature), learnable_tau,
+                                   use_softmax, layer_initializations[head_idx], bias_initialization, grad_scalar)
+        for layer in self.expectation_layers:
+            layer.enable_input_capture()
+
+    def _temp(self, index: int, initial: float):
+        return self.temperatures[index] if self.temperatures else initial
+
+    @property
+    def expectation_layers(self) -> list[OrNorGateLayer]:
+        result = [self.stem]
+        for block in self.blocks:
+            result.extend([block.layer1, block.layer2])
+        result.append(self.head)
+        return result
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x)
+        for block in self.blocks:
+            x = block(x)
+        return self.head(x)
+
+    def to_discrete(self, threshold: float = 0.5):
+        from discrete_logic_net import DiscreteModernLogicGateNet
+        result = DiscreteModernLogicGateNet(self.input_dim, self.output_dim, self.width,
+                    self.num_residual_blocks, residual_enabled=self.residual_enabled)
+        with torch.no_grad():
+            for src, dst in zip(self.expectation_layers, result.expectation_layers):
+                dst.weight.copy_(src.actual_weight() >= threshold)
+                dst.bias.copy_(src.actual_bias() >= threshold)
+        return result

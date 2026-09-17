@@ -14,6 +14,27 @@ def xor(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return a + b - 2 * a * b
 
 
+class XorResidualLogicBlock(nn.Module):
+    """Two width-preserving logic layers followed by an elementwise XOR skip."""
+
+    def __init__(self, width: int, *, temperature: float | torch.Tensor = 1.0,
+                 learnable_tau: bool = False, use_softmax: bool = False,
+                 weight_initialization: Callable[..., Any] = nn.init.normal_,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=0.5),
+                 grad_scalar: bool = False, residual_enabled: bool = True):
+        super().__init__()
+        self.layer1 = OrNorGateLayer(width, width, temperature, learnable_tau, use_softmax,
+                                     weight_initialization, bias_initialization, grad_scalar)
+        self.layer2 = OrNorGateLayer(width, width, temperature, learnable_tau, use_softmax,
+                                     weight_initialization, bias_initialization, grad_scalar)
+        self.residual_enabled = residual_enabled
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h1 = self.layer1(x)
+        h2 = self.layer2(h1)
+        return xor(x, h2) if self.residual_enabled else h2
+
+
 class OrNorGateLayer(nn.Module):
     """Differentiable OR/NOR layer with soft (softmax) or hard (argmax) output selection.
 

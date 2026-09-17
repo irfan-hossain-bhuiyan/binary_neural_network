@@ -90,3 +90,49 @@ class DiscreteMultiLayerLogicGateNet(nn.Module):
             cont_layer.bias.data.copy_(disc_layer.bias.to(torch.float32)) # type: ignore
             
         return continuous_net
+
+
+class DiscreteXorResidualLogicBlock(nn.Module):
+    """Exact Boolean counterpart of a width-preserving two-layer block."""
+    def __init__(self, width: int, residual_enabled: bool = True):
+        super().__init__()
+        self.layer1 = DiscreteOrNorGateLayer(width, width)
+        self.layer2 = DiscreteOrNorGateLayer(width, width)
+        self.residual_enabled = residual_enabled
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.to(torch.bool)
+        h2 = self.layer2(self.layer1(x))
+        return (x ^ h2) if self.residual_enabled else h2
+
+
+class DiscreteModernLogicGateNet(nn.Module):
+    """Boolean graph matching ModernLogicGateNet, including XOR skip locations."""
+    def __init__(self, input_dim: int, output_dim: int, width: int = 64,
+                 num_residual_blocks: int = 2, residual_enabled: bool = True):
+        super().__init__()
+        if width <= 0 or num_residual_blocks < 0:
+            raise ValueError("width must be positive and number of residual blocks nonnegative")
+        self.input_dim, self.output_dim = input_dim, output_dim
+        self.width, self.num_residual_blocks = width, num_residual_blocks
+        self.residual_enabled = residual_enabled
+        self.stem = DiscreteOrNorGateLayer(input_dim, width)
+        self.blocks = nn.ModuleList([
+            DiscreteXorResidualLogicBlock(width, residual_enabled)
+            for _ in range(num_residual_blocks)
+        ])
+        self.head = DiscreteOrNorGateLayer(width, output_dim)
+
+    @property
+    def expectation_layers(self) -> list[DiscreteOrNorGateLayer]:
+        result = [self.stem]
+        for block in self.blocks:
+            result.extend([block.layer1, block.layer2])
+        result.append(self.head)
+        return result
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x.to(torch.bool))
+        for block in self.blocks:
+            x = block(x)
+        return self.head(x)
