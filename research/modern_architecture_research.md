@@ -38,7 +38,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
-| M001 | b85e717 | XOR residual blocks can train and reach a faithful Boolean solution | bitwise_xor, 4-bit smoke then 16-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | implementation/tests only; training not yet run |
+| M001 | pending | XOR residual blocks can train and reach a faithful Boolean solution | bitwise_xor, 4-bit smoke then 16-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | preliminary 4-bit run completed; corrected hard-max measurement queued |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -144,3 +144,23 @@ Pending experiment.
 Does F(x) move toward 0/1 and keep the direct XOR gradient path usable? Does the
 residual model outperform the same deep no-residual topology? Does either model
 reach readiness while retaining task performance?
+
+
+### M001 preliminary 4-bit run (measurement incomplete)
+
+The first committed Kaggle run used code SHA `091faa02bd60a8cb2f53fe6efb800fb3c5c9cb6f`,
+seed 0, 20,000 sampled examples, 80/20 train/test split, and all 2000 epochs.
+Returned SHA matched. The original artifact is
+`kaggle/results/091faa0_M001_modern_4bit_preliminary.json`. It recorded epoch-0
+continuous exact accuracy 0.0585, bit accuracy 0.499125, D_w 0.08560, D_b
+0.08541; first operational readiness was epoch 5. At epoch 2000, validation
+continuous exact/bit accuracy was 0.83575/0.95625, thresholded discrete exact/bit
+accuracy was 0.7055/0.914625, D_w 0.000685, D_b 0.0000662, and 3,756 of 17,152
+possible edges were selected. Task loss was 0.03004; reported regularization
+loss was 1.4032. The model was still improving in continuous exact accuracy
+from 0.0585 at epoch 0 to 0.83575 at the budget ceiling. The direct-gain means
+were 0.9777 and 0.9897 in blocks 0 and 1; block branch flip fractions were
+0.7884 and 0.9530. These are preliminary only: this run omitted the continuous
+hard-max prediction measurement needed to validate agreement with the discrete
+graph, so it is not the final M001 comparison. No 16-bit or no-residual run was
+started from this incomplete measurement.
