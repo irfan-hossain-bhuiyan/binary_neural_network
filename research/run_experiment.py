@@ -604,6 +604,16 @@ def run_single(
             "continuous_exact_accuracy": cont_exact0,
             "discrete_bit_accuracy": disc_bit0,
             "discrete_exact_accuracy": disc_exact0,
+            "discretization_ready": bool(
+                pol0.get("D_w", float("inf")) <= 0.01 and
+                pol0.get("D_b", float("inf")) <= 0.01 and
+                pol0.get("w_corner_05", 0.0) >= 0.95 and
+                pol0.get("b_corner_05", 0.0) >= 0.95),
+            "diagnostic_discrete_status": "ready_evaluation" if (
+                pol0.get("D_w", float("inf")) <= 0.01 and
+                pol0.get("D_b", float("inf")) <= 0.01 and
+                pol0.get("w_corner_05", 0.0) >= 0.95 and
+                pol0.get("b_corner_05", 0.0) >= 0.95) else "diagnostic_only",
         }
 
     # Per-epoch trajectory (instrumentation, no grad).
@@ -798,6 +808,14 @@ def run_single(
         "discrete_accuracy": disc_exact,
         "discrete_exact_accuracy": disc_exact,
         "discrete_function_recovery": function_recovery,
+        "discrete_status": "ready_evaluation" if (
+            compute_polarization_stats(unwrapped).get("D_w", float("inf")) <= 0.01 and
+            compute_polarization_stats(unwrapped).get("D_b", float("inf")) <= 0.01 and
+            compute_polarization_stats(unwrapped).get("w_corner_05", 0.0) >= 0.95 and
+            compute_polarization_stats(unwrapped).get("b_corner_05", 0.0) >= 0.95
+        ) else "diagnostic_only",
+        "discretization_ready_first_epoch": next(
+            (entry["epoch"] for entry in trajectory if entry.get("discretization_ready")), None),
         "continuous_discrete_gap": cont_exact - disc_exact,
         # Explicit truth-table recovery keys for full-table tasks.
         "truth_table_continuous_bit_accuracy": cont_bit if eval_mode == FULL_TRUTH_TABLE else None,
