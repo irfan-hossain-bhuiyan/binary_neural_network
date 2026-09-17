@@ -916,6 +916,7 @@ def main() -> None:
     training_cfg = dict(cfg.get("training", {}))
     if args.epochs is not None:
         training_cfg["epochs"] = args.epochs
+        training_cfg.pop("max_epochs", None)
     seed = args.seed if args.seed is not None else int(task_cfg.get("seed", 0))
 
     metrics = run_single(
@@ -926,6 +927,7 @@ def main() -> None:
         seed=seed,
         discretization_threshold=float(cfg.get("discretization_threshold", 0.5)),
     )
+    metrics["research_experiment_id"] = cfg.get("experiment_id")
     print(json.dumps(metrics, indent=2))
     if args.output:
         Path(args.output).write_text(json.dumps(metrics, indent=2))
