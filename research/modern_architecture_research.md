@@ -38,7 +38,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
-| M001 | pending | XOR residual blocks can train and reach a faithful Boolean solution | bitwise_xor, 4-bit smoke then 16-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | preliminary 4-bit run completed; corrected hard-max measurement queued |
+| M001 | 091faa0 / corrected rerun 1f25331 | XOR residual blocks can train, polarize, and discretize faithfully | bitwise_xor, 4-bit smoke | stem 64, two 64-wide two-layer XOR blocks, head | 0 | preliminary run: 2000 epochs, ready first at 5, continuous exact 0.8358 vs discrete 0.7055; hard-max rerun still running |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -164,3 +164,6 @@ were 0.9777 and 0.9897 in blocks 0 and 1; block branch flip fractions were
 hard-max prediction measurement needed to validate agreement with the discrete
 graph, so it is not the final M001 comparison. No 16-bit or no-residual run was
 started from this incomplete measurement.
+
+Full narrative, trajectory figures, block statistics, limitations, and the
+current stopping point are in [`modern_architecture_report.md`](modern_architecture_report.md).
