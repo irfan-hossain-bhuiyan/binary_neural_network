@@ -38,7 +38,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
-| M001 | pending | XOR residual blocks can train and reach a faithful Boolean solution | bitwise_xor, 4-bit smoke then 16-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | implementation/tests only; training not yet run |
+| M001 | b85e717 | XOR residual blocks can train and reach a faithful Boolean solution | bitwise_xor, 4-bit smoke then 16-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | implementation/tests only; training not yet run |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -50,7 +50,8 @@ produce a discrete network consistent with its continuous hard-max graph.
 
 ### Exact code state
 
-Git SHA: pending commit.
+Code SHA: `b85e717` (source and tests); exact packaged HEAD is to be recorded
+with returned Kaggle metadata after the remote run.
 
 ### Architecture
 
@@ -59,6 +60,15 @@ XOR with the block input (for each of two blocks) -> output head. Direct skips
 are only applied at width 64. The no-residual control uses the same layers,
 shapes, initialization sequence, and dimensions with only those XOR operations
 disabled. No OR surrogate, adapter, projection, or threshold change is used.
+
+For the 4-bit smoke (input 8, output 4), the six layer dimensions are
+8->64, 64->64, 64->64, 64->64, 64->64, 64->4. Initializer means by index are:
+stem 1.0; block0.layer0 0.0; block0.layer1 1.0; block1.layer0 0.0;
+block1.layer1 1.0; head 0.0. Bias initialization mean is 1.0 for every layer.
+The 4-bit graph has 17,152 possible selected edges, 34,304 weight/bias scalar
+parameters, and 6 learnable temperatures (34,310 trainable scalars). The
+16-bit graph has 19,456 possible selected edges, 38,912 weight/bias scalars,
+and 6 temperatures (38,918 trainable scalars).
 
 Discrete conversion copies thresholded effective weights and biases into a new
 DiscreteModernLogicGateNet and keeps the same residual positions.
