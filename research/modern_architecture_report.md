@@ -425,3 +425,84 @@ edge strength can jointly select edges and sharpen the softmax, without a
 separate temperature. The existing regularizer is omitted because its bounded
 weight/tau penalties do not apply; this also removes its coupled bias penalty
 and is an acknowledged experimental consequence.
+
+
+## M002b: temperature-free self-sharpening operator
+
+The intended temperature-free layer is implemented separately from the old
+layer:
+
+```text
+a = x + b - 2*x*b
+r = softplus(theta) > 0
+g = tanh(r)
+logits = a*r
+value = a*g
+output = sum(softmax(logits) * value)
+```
+
+There is no temperature or tau variable. In the asymptotic regime, r near zero
+suppresses a connection, and large r makes g approach one while sharpening the
+softmax over active literals. Bias/polarity remains independently
+parameterized in [0,1]. The residual graph is the same two-block modern graph;
+its Boolean conversion thresholds g and b at 0.5 and keeps both residual
+positions.
+
+The alternating initial gate targets are 0.75, 0.25, 0.75, 0.25, 0.75, 0.25
+for stem, block0.layer1, block0.layer2, block1.layer1, block1.layer2 and head.
+Mapping `r=atanh(g)` and `theta=log(exp(r)-1)` gives high-gate
+`r=0.972955, theta=0.498197` and low-gate `r=0.255413,
+theta=-1.234451`. Bias initialization remains the M001-R raw normal mean 1.
+
+Operator CPU tests cover all-zero literals, an active selected edge as R grows
+through 1, 2, 5, 10 and 20, inactive selected literals, randomized Boolean OR
+limits, initialization mapping, absence of temperature/tau parameters, and
+residual-preserving conversion. The full CPU suite passed: **29 tests**. A
+2-epoch CPU integration smoke also passed, confirming the model trains and its
+serialized trajectory has no temperature/tau fields.
+
+M002b used the exact 256-row XOR table, seed 0, Adam 0.01, MSE, batch 256,
+2000 epochs, no explicit regularizer and no plateau noise. It ran on a Tesla
+T4 for 49.90 seconds as Kaggle kernel v17. Exact packaged/returned SHA:
+`c555781c38113b7e3590c75ecfb5068412d70caf`.
+
+| Final inference | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous temperature-free soft | 1.0000 | 1.0000 |
+| Continuous hard-max | 0.8545 | 0.4688 |
+| Thresholded Boolean, diagnostic | 0.7305 | 0.2812 |
+
+Soft exact accuracy first reached 1.0 at epoch 525 and remained 1.0 at all 60
+recorded evaluations afterward. The best discrete diagnostic was 0.28125 at
+epoch 1175. The Boolean model was not parameter-binarized: final D_g=0.08588
+and g corner05=0.56145, although biases were highly polarized (D_b=0.00580,
+b corner05=0.98292). Therefore perfect continuous truth-table fitting is not
+yet exact Boolean function recovery.
+
+At the final checkpoint, 56.15% of effective gates are within 0.05 of 0 or 1.
+The sharpening is uneven: block0.layer1 has 70.0% of its gates at or below
+0.05, while block0.layer2 has 76.7% at or above 0.95. Internal theta gradient
+means are between 6.9e-8 and 3.5e-7; the smallest is in block0.layer2, which
+has the strongest high-gate population. Task loss also falls to 0.000479, so
+this correlation does not establish gradient saturation as a cause.
+
+The direct XOR gains have signed means -0.6052 and +0.3656 by block, with
+absolute means 0.9713 and 0.8794. Flip fractions are 0.8164 and 0.2875. The
+backward activation gradient transfer ratios are above one in both blocks:
+1.850/1.287 by L2 norm and 2.016/1.765 by mean absolute gradient.
+
+![M002b accuracy, polarization, gates and theta gradients](figures/m002b_temperature_free_trajectory.png)
+
+Relative to M001-R, M002b reaches perfect continuous truth-table accuracy
+much earlier (epoch 525 versus M001-R's best 0.61719 at epoch 1725), but the
+deterministic Boolean result is still not ready for a like-for-like quality
+claim. M001-R final Boolean exact was 0.16797 and its best ready checkpoint
+was 0.18359; M002b's 0.28125 Boolean score is diagnostic only.
+
+This is partial evidence for the intended self-sharpening behavior: r develops
+near-zero and large values and the soft operator learns XOR. Global edge
+polarization and exact Boolean recovery remain incomplete, with a large
+53.13-point soft-to-hard exact gap. No MNIST, stochastic circuit sampling, or
+new OR operator was run. The next single experiment should replicate this
+committed config with another seed before changing the operator or adding
+training interventions.

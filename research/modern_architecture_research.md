@@ -43,6 +43,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 | M001-NR | `feb9db19e6bf4be4ae73699f5bca183c78683d5a` | Matched same-depth graph without residual XOR | exact 256-row table | same modern layers, residual disabled | 0 | 2000 epochs; function recovery false; final soft/hard/Boolean exact 0.3789/0.1797/0.1172; T4 70.1s |
 | M002 | `f8e998fdb4948d48f7f24122de2534874e83116a` | Measure the fixed-T=1 policy as a negative control (not temperature-free) | exact 256-row table | modern residual, T fixed at 1 | 0 | 2000 epochs; polarized but near-chance exact accuracy 0.0898/0.0625/0.0625; T4 55.6s |
 | M003 | `62f17059b1dc66094f1cb4e633ccc1d6585c6218` | Test task optimization without explicit regularization on the fixed-T=1 branch | exact 256-row table | modern residual, T fixed at 1, no regularizer | 0 | 2000 epochs; best soft exact 0.3164; final parameters not binarized; Boolean diagnostic exact 0.0625; T4 50.3s |
+| M002b | `c555781c38113b7e3590c75ecfb5068412d70caf` | Couple edge selection and softmax sharpening through r | exact 256-row table | temperature-free modern residual network | 0 | soft exact 1.0 from epoch 525; Boolean diagnostic exact 0.2813; gates not globally binarized; T4 49.9s |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -849,3 +850,241 @@ only and no plateau perturbation. Because the existing regularizer jointly
 penalizes bounded weights, polarity biases and tau, it cannot be applied to
 unbounded `r`; omitting it also removes its bias penalty. This is recorded as
 an implementation consequence. No replacement r or bias regularizer is added.
+
+## M002b — Temperature-free self-sharpening edge operator
+
+### Parent experiment
+
+M001-R, the modern width-64 XOR-residual network on the complete 256-row
+4-bit XOR truth table. M002 and M003 are not parents: they are fixed-T=1
+experiments and do not test this operator.
+
+### Hypothesis
+
+Can one positive edge-strength parameter simultaneously represent edge
+selection and sharpen soft aggregation toward Boolean OR, without a separate
+temperature variable?
+
+### Single changed variable
+
+The logic operator and edge parameterization change from bounded `w` plus a
+separate temperature to `theta∈R`, `r=softplus(theta)>0`, and
+`g=tanh(r)∈(0,1)`, with soft output
+`S(a,r)=<softmax(a⊙r), a⊙tanh(r)>`. The XOR-polarity parameter remains a
+separate effective bias in `[0,1]`. The modern residual topology is unchanged.
+
+For this clean first run, the old weight/tau regularizer was not applied to
+raw `r`; it was defined for bounded weights and couples weight, bias, and tau
+penalties. Consequently this run also has no old bias regularization. No new
+r/bias regularizer was introduced. Historical plateau noise was omitted, as
+specified for the clean temperature-free test. Task loss is the only loss;
+the only constraint is numerical safety, clamping raw theta and bias to
+`[-20,20]`. This training-policy consequence is disclosed rather than
+attributed to the operator alone.
+
+### Architecture
+
+`TemperatureFreeModernLogicGateNet`: 8→64 stem, two width-64 blocks, each with
+two temperature-free logic layers followed by continuous XOR with the block
+input, then a 64→4 head. The discrete conversion uses the same stem/block/head
+and residual positions. Effective Boolean edge selection is
+`g>=0.5`; bias polarity is thresholded at 0.5. The resulting Boolean metrics
+are diagnostic because the effective gates do not satisfy the previous
+parameter-binarization criterion.
+
+There is no temperature or tau parameter, scheduler, annealing, or tau
+regularizer in the model/config/result trajectory.
+
+### Dataset
+
+The complete 256-row `bitwise_xor_truth_table`, all 4-bit operand pairs, with
+no held-out rows. This is exact function-recovery evaluation, not
+out-of-sample generalization.
+
+### Training configuration
+
+Seed 0; Adam, learning rate 0.01; MSE; batch 256; 2000 epochs; checkpoints
+measured every 25 epochs plus the existing early diagnostic epochs. Tesla T4,
+49.90 seconds, Kaggle kernel version 17. Package SHA and returned SHA were
+verified as `c555781c38113b7e3590c75ecfb5068412d70caf`. The Kaggle metrics
+payload's own `git_commit` field is null because the runtime is not a Git
+checkout; the exact package/returned SHA verification is recorded here.
+
+Result: `kaggle/results/c555781_M002b-temperature-free-self-sharpening_seed0.json`;
+checkpoint: `kaggle/results/c555781_M002b_seed0.pt`.
+
+### Initialization mapping
+
+Alternating desired effective gates use `g_high=0.75` and `g_low=0.25`. For
+each target:
+
+```text
+r_init = atanh(g_init)
+theta_init = log(exp(r_init)-1)  # inverse softplus
+```
+
+| Layer | target g | initial r mean | initial theta mean |
+|---|---:|---:|---:|
+| stem | 0.75 | 0.972955 | 0.498197 |
+| block0.layer1 | 0.25 | 0.255413 | -1.234451 |
+| block0.layer2 | 0.75 | 0.972955 | 0.498197 |
+| block1.layer1 | 0.25 | 0.255413 | -1.234451 |
+| block1.layer2 | 0.75 | 0.972955 | 0.498197 |
+| head | 0.25 | 0.255413 | -1.234451 |
+
+Bias initialization remains the M001-R normal initializer with raw mean 1.0
+at every layer; effective bias/polarity stays in `[0,1]`.
+
+### Metrics and training trajectory
+
+| Epoch | Task loss | Soft bit / exact | Hard-max exact | Boolean exact (diagnostic) | D_g | D_b | g corner 0.05 | b corner 0.05 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | — | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.2500 | 0.0865 | 0.000 | 0.691 |
+| 1 | 0.39063 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.2497 | 0.0866 | 0.000 | 0.691 |
+| 5 | 0.38742 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.2463 | 0.0866 | 0.000 | 0.690 |
+| 10 | 0.38333 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.2398 | 0.0858 | 0.000 | 0.696 |
+| 25 | 0.37021 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.2183 | 0.0811 | 0.000 | 0.718 |
+| 50 | 0.34235 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.1837 | 0.0653 | 0.000 | 0.760 |
+| 100 | 0.26634 | 0.5000 / 0.0625 | 0.0625 | 0.0625 | 0.1122 | 0.0406 | 0.292 | 0.863 |
+| 200 | 0.24928 | 0.5605 / 0.1055 | 0.0625 | 0.0625 | 0.0791 | 0.0104 | 0.438 | 0.956 |
+| 300 | 0.24706 | 0.6777 / 0.1602 | 0.0625 | 0.0625 | 0.0813 | 0.0038 | 0.431 | 0.986 |
+| 500 | 0.12858 | 0.9268 / 0.7227 | 0.0938 | 0.0938 | 0.0986 | 0.0034 | 0.485 | 0.988 |
+| 525 | 0.08489 | 1.0000 / 1.0000 | 0.0938 | 0.0938 | 0.0955 | 0.0046 | 0.483 | 0.983 |
+| 550 | 0.05422 | 1.0000 / 1.0000 | 0.0938 | 0.0938 | 0.0968 | 0.0058 | 0.486 | 0.979 |
+| 600 | 0.02811 | 1.0000 / 1.0000 | 0.0938 | 0.0938 | 0.1033 | 0.0079 | 0.491 | 0.970 |
+| 750 | 0.00759 | 1.0000 / 1.0000 | 0.0938 | 0.0938 | 0.1088 | 0.0069 | 0.511 | 0.976 |
+| 1000 | 0.00255 | 1.0000 / 1.0000 | 0.2109 | 0.1250 | 0.1020 | 0.0060 | 0.529 | 0.980 |
+| 1250 | 0.00140 | 1.0000 / 1.0000 | 0.2812 | 0.2812 | 0.0961 | 0.0056 | 0.540 | 0.982 |
+| 1500 | 0.00090 | 1.0000 / 1.0000 | 0.3750 | 0.2812 | 0.0920 | 0.0055 | 0.547 | 0.983 |
+| 1750 | 0.00064 | 1.0000 / 1.0000 | 0.3750 | 0.2812 | 0.0887 | 0.0056 | 0.555 | 0.983 |
+| 2000 | 0.00048 | 1.0000 / 1.0000 | 0.4688 | 0.2812 | 0.0859 | 0.0058 | 0.561 | 0.983 |
+
+The full JSON trajectory contains all 2000 task-loss and theta-gradient entries,
+all 84 evaluated accuracy/polarization checkpoints, and complete per-layer
+mean/std/min/max/q01/q05/q25/q50/q75/q95/q99 summaries for theta, r, and g.
+The first perfect soft truth-table evaluation is epoch 525. All 60 recorded
+evaluations from epoch 525 through epoch 2000 remain at bit and exact accuracy
+1.0; task loss continues down to 0.000479. This is stable at measured
+checkpoints, not proof of unmeasured per-epoch accuracy.
+
+![M002b accuracy, polarization, layer gate means, and theta gradients](figures/m002b_temperature_free_trajectory.png)
+
+### r/g distributions and gradient saturation
+
+At epoch 0 the aggregate D_g is 0.25, with no gates within 0.05 of either
+corner. At epoch 2000, D_g=0.08588; 56.15% of gates are within 0.05 of 0/1,
+with 29.34% `g<=0.05`, 26.80% `g>=0.95`, 5.17% `g<=0.01`, and 15.01%
+`g>=0.99`. The middle fraction `0.4<g<0.6` is 4.34%. Biases are much more
+polarized: final D_b=0.00580 and b_corner_05=0.98292. The combined
+`PARAMETER_BINARIZED` criterion nevertheless never passes because g is not
+sufficiently near both corners.
+
+The distributions are layer-specific, rather than a uniform sharpening:
+
+| Layer | Final theta mean ± std | r median / q95 | g q05 / median / q95 | D_g | g≤0.05 / g≥0.95 | Mean |dL/dtheta| |
+|---|---:|---:|---:|---:|---:|---:|
+| stem | -1.0637 ± 3.3170 | 0.0735 / 6.5915 | 0.0184 / 0.0733 / 1.0000 | 0.0630 | 0.176 / 0.215 | 3.54e-6 |
+| block0.layer1 | -3.0755 ± 1.1741 | 0.0335 / 0.3549 | 0.0120 / 0.0335 / 0.3407 | 0.0662 | 0.700 / 0.007 | 3.52e-7 |
+| block0.layer2 | 1.2865 ± 2.9320 | 2.4557 / 3.6959 | 0.0065 / 0.9854 / 0.9988 | 0.0233 | 0.164 / 0.767 | 6.94e-8 |
+| block1.layer1 | -1.3572 ± 3.1810 | 0.0784 / 5.7123 | 0.0052 / 0.0782 / 1.0000 | 0.0764 | 0.248 / 0.169 | 2.96e-7 |
+| block1.layer2 | -0.7913 ± 2.3458 | 0.2941 / 3.2244 | 0.0253 / 0.2859 / 0.9968 | 0.1786 | 0.094 / 0.151 | 2.05e-7 |
+| head | -1.9005 ± 1.4605 | 0.1305 / 0.1895 | 0.0540 / 0.1298 / 0.1872 | 0.1156 | 0.012 / 0.031 | 6.75e-6 |
+
+Notably, block0.layer1 mostly moves toward absent gates (70.0% at g≤0.05),
+while block0.layer2 has a strong high-gate population (76.7% at g≥0.95). This
+is direct evidence of partial self-sharpening and edge selection by r in some
+layers. It is not global Boolean convergence. At the final measurement,
+mean-absolute theta gradients in internal layers are small (about
+`6.9e-8`–`3.5e-7`); the saturated block0.layer2 gates coincide with the lowest
+measured mean theta gradient. Low task loss also reduces gradients, so this
+association does not establish saturation as the cause.
+
+### Soft, hard-max, and Boolean comparison
+
+| Final inference on all rows | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Temperature-free continuous soft | 1.0000 | 1.0000 |
+| Temperature-free hard-max | 0.8545 | 0.4688 |
+| Exact thresholded Boolean | 0.7305 | 0.2812 |
+
+Soft-to-hard exact gap is 53.13 percentage points; hard-to-Boolean is 18.75
+points. The thresholded Boolean function is exact on 72/256 rows. The best
+hard-max exact accuracy is 0.46875 at epoch 1950. The best thresholded
+Boolean diagnostic is 0.28125 at epoch 1175 and also at the final checkpoint.
+No parameter-binarized checkpoint exists, so neither thresholded Boolean score
+is evidence of a ready deterministic circuit. Final thresholded circuit size
+is 5,856/17,152 edges (34.14%); this is diagnostic complexity only.
+
+### Residual behavior and actual gradients
+
+Final block0/block1 signed direct XOR gain means are -0.6052/+0.3656; mean
+absolute gains are 0.9713/0.8794. Positive/negative signed fractions are
+0.1836/0.8164 and 0.7125/0.2875. XOR flip fractions are 0.8164 and 0.2875.
+Backprop transfer from block output toward input is 1.850/1.287 by L2 norm
+and 2.016/1.765 by mean absolute gradient. These are descriptive single-batch
+measurements, not evidence that residuals caused successful learning.
+
+
+| Block stage | Mean | Variance | Near 0 | Near 1 | Middle | Binary entropy |
+|---|---:|---:|---:|---:|---:|---:|
+| block0 input | 0.4178 | 0.2159 | 0.5449 | 0.3665 | 0.0021 | 0.1753 |
+| block0 h1 | 0.0395 | 0.0127 | 0.8840 | 0.0016 | 0.0247 | 0.1500 |
+| block0 h2 | 0.8026 | 0.1445 | 0.1836 | 0.7947 | 0.0000 | 0.0998 |
+| block0 output | 0.6725 | 0.1808 | 0.2339 | 0.3997 | 0.0024 | 0.2371 |
+| block1 input | 0.6725 | 0.1808 | 0.2339 | 0.3997 | 0.0024 | 0.2371 |
+| block1 h1 | 0.6886 | 0.1362 | 0.1995 | 0.0861 | 0.0535 | 0.3947 |
+| block1 h2 | 0.3172 | 0.1671 | 0.4962 | 0.2131 | 0.0533 | 0.2700 |
+| block1 output | 0.7042 | 0.1266 | 0.0894 | 0.1097 | 0.0609 | 0.4193 |
+
+| Block | Signed gain mean / median | p10 / p25 / p75 / p90 | Positive / negative | Mean absolute gain | Fraction abs gain <0.1 / >0.9 | Mask flip rate |
+|---|---:|---:|---:|---:|---:|---:|
+| block0 | -0.6052 / -0.9652 | -0.9903 / -0.9814 / -0.9266 / +0.9988 | 0.1836 / 0.8164 | 0.9713 | 0.0000 / 0.9783 | 0.8164 |
+| block1 | +0.3656 / +0.8984 | -0.9750 / -0.7457 / +0.9433 / +0.9614 | 0.7125 / 0.2875 | 0.8794 | 0.0078 / 0.7093 | 0.2875 |
+
+Per-layer selected-edge counts at threshold 0.5 are stem 117/512, block0.layer1
+127/4096, block0.layer2 3301/4096, block1.layer1 1039/4096,
+block1.layer2 1262/4096, and head 10/256. The layer distribution aligns with
+the g distributions: block0.layer2 retains many high-g selected edges while
+block0.layer1 is mostly near absent.
+
+### Comparison against M001-R
+
+M001-R's best soft exact accuracy was 0.61719 at epoch 1725 and final soft
+exact was 0.58594. M002b first attained perfect soft truth-table accuracy at
+epoch 525 and held it at every recorded evaluation through epoch 2000. This is
+a large improvement in continuous task fitting for this seed.
+
+M001-R's final hard-max and Boolean exact scores were 0.16406 and 0.16797;
+its best ready Boolean checkpoint was 0.18359. M002b's final hard-max score
+is 0.46875 and its thresholded Boolean diagnostic is 0.28125, but M002b is
+not parameter-binarized. These Boolean comparisons are therefore not
+like-for-like evidence of deterministic circuit quality. M002b also continues
+to reduce task loss after the soft function is first perfectly recovered,
+without making the edge gates globally Boolean.
+
+### Result
+
+The proposed parameterization does partially self-sharpen: raw r develops
+low and high populations in different layers, and the continuous network
+learns the complete XOR table by epoch 525. It does **not** yet produce a
+Boolean-ready model. The exact discrete network remains much worse than the
+soft network, and most layers retain fractional gate mass. This answers the
+mechanistic hypothesis positively in part, while exposing a large remaining
+soft-to-Boolean semantic gap.
+
+### What this does NOT prove
+
+One seed does not show reproducibility, generalization, that the operator
+always self-sharpens, that the Boolean circuit can recover XOR, or that the
+observed high-r/low-r populations are caused only by the operator. Regularizer
+and plateau noise were intentionally absent, and removal of the old coupled
+regularizer also removed the old bias penalty. The experiment does not
+identify whether softmax weighting, residual interactions, or continued
+fractional gates cause the remaining inference gap.
+
+### Next question
+
+Does the M002b gate distribution and soft-to-Boolean gap reproduce under a
+second seed with this exact committed config, or does seed 0 reflect a
+particular initialization trajectory? Run a replication seed before changing
+the operator, adding regularization, stochastic sampling, or moving to MNIST.
