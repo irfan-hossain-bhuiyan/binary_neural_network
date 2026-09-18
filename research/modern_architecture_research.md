@@ -38,7 +38,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
-| M001 | 091faa0 / corrected rerun 1f25331 | XOR residual blocks can train, polarize, and discretize faithfully | bitwise_xor, 4-bit smoke | stem 64, two 64-wide two-layer XOR blocks, head | 0 | preliminary run: 2000 epochs, ready first at 5, continuous exact 0.8358 vs discrete 0.7055; hard-max rerun still running |
+| M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -50,8 +50,9 @@ produce a discrete network consistent with its continuous hard-max graph.
 
 ### Exact code state
 
-Code SHA: `b85e717` (source and tests); exact packaged HEAD is to be recorded
-with returned Kaggle metadata after the remote run.
+Architecture/test source SHA: `b85e717`; completed corrected training package:
+`1f25331357476462c947b7269a47c8ebada920c9` (Kaggle kernel version 12; returned
+SHA verified).
 
 ### Architecture
 
@@ -75,10 +76,10 @@ DiscreteModernLogicGateNet and keeps the same residual positions.
 
 ### Training configuration
 
-Pending run. Planned task is bitwise_xor, initially 4-bit with seed 0, then
-16-bit only if the smoke run validates training. Maximum budget is 2000 epochs;
-trajectory checks every 25 epochs. Dataset uses the task's seeded sampled
-train/test split (`num_samples` and `train_ratio` are recorded in config).
+Completed seed-0 sampled 4-bit run. The corrected evaluation used the same
+final checkpoint for soft, hard-max, and discrete inference. The dataset uses
+20,000 seeded operand pairs and an 80/20 train/validation split. No 16-bit run
+has been started.
 
 The configured alternating initializer is listed by explicit layer index in
 the M001 config. Bias initialization remains the recovered baseline setting.
@@ -92,52 +93,55 @@ claim about discretization success or failure.
 
 ### Training trajectory
 
-Pending run. Required fields: epoch, task/regularization/total loss, continuous
-bit/exact accuracy, D_w/D_b, corner fractions, readiness, diagnostic discrete
-accuracies, temperature, and tau.
+Recorded for every epoch: task/regularization/total loss, accuracy at
+measurement checkpoints, D_w/D_b, corner fractions, readiness, diagnostic
+discrete accuracies, temperature, and tau. Full JSON is archived below.
 
 ### Residual-block behavior
 
-Pending run. Per block, measure input, first logic output, residual branch, and
-XOR output: mean, variance, near-zero, near-one, middle fractions, and binary
-entropy. Also report XOR flip fraction and output/input difference fraction.
+Recorded for both blocks on the final validation pass: input, first logic
+output, residual branch, XOR output distributions and thresholded flip rates.
 
 ### Gradient behavior
 
-Pending run. For each residual block report abs(1-2F(x)) mean, median, p10,
-p25, p75, p90, and fractions below 0.1/0.25 and above 0.75/0.9. Record
-parameter gradient means/norms by stem, each logic layer, each block input/output,
-and head, including first/last ratio and activation gradient entering/leaving
-blocks where retained gradients permit.
+The first run recorded absolute direct gain only; it did not retain the signed
+direct derivative. Named parameter gradients and actual activation gradients
+are in the report. The corrected evaluation adds hard-max predictions but
+does not retrain or change those gradient measurements.
 
 ### Continuous performance
 
-Pending run.
+See completed result below.
 
 ### Boolean polarization
 
-Pending run. Report readiness epoch and D_w/D_b trajectory; polarization alone
-is not success.
+First ready at epoch 5; readiness was false again at epoch 50. Final D_w and
+D_b were 0.000685 and 0.0000662. Polarization alone was not task success.
 
 ### Discrete performance after readiness
 
-Pending run. Compare continuous soft, continuous hard-max, and exact Boolean
-predictions on validation data after readiness. Pre-ready discrete results are
-diagnostic_only.
+Completed at the epoch-2000 parameter-binarized checkpoint. Soft, hard-max,
+and exact Boolean predictions were evaluated on the same 4,000 validation
+rows. Earlier thresholded outputs remain diagnostic only.
 
 ### Continuous/discrete gap
 
-Pending run. Investigate any mismatch between hard-max and Boolean predictions
-at a ready checkpoint as a possible conversion/implementation defect.
+Hard-max remained above the Boolean result by 6.475 percentage points in exact
+accuracy. Endpoint equivalence tests pass. The near-corner checkpoint weights
+were not saved, so the remaining threshold/margin effects could not be probed
+per layer after training.
 
 ### Result
 
-Not run. Architecture correctness tests passed locally; no research result is
-claimed yet.
+The model learned and polarized, but the final discrete result remained below
+the continuous soft and hard-max results. See the complete three-way result
+and interpretation below; this is partial function recovery, not success.
 
 ### Interpretation
 
-Pending experiment.
+Both continuous aggregation and parameter thresholding contributed to the
+observed exact-accuracy gaps. This does not establish whether XOR residuals
+help relative to a matched no-residual topology.
 
 ### Open questions
 
@@ -165,5 +169,98 @@ hard-max prediction measurement needed to validate agreement with the discrete
 graph, so it is not the final M001 comparison. No 16-bit or no-residual run was
 started from this incomplete measurement.
 
+That statement records the decision at the time of the preliminary run. The
+corrected M001 comparison has since completed and is recorded below; the
+matched control and truth-table experiment remain unrun.
+
 Full narrative, trajectory figures, block statistics, limitations, and the
 current stopping point are in [`modern_architecture_report.md`](modern_architecture_report.md).
+
+### M001 corrected three-way evaluation
+
+#### Parent experiment
+
+The preliminary M001 run at commit `091faa02bd60a8cb2f53fe6efb800fb3c5c9cb6f`;
+same seed, data, initialization, optimizer, regularization, architecture, and
+training budget.
+
+#### Hypothesis
+
+Separate the validation gap from continuous soft aggregation to hard-max, and
+from hard-max continuous inference to the exact Boolean network.
+
+#### Single changed variable
+
+Evaluation instrumentation only: measure a cloned continuous hard-max model.
+Training code path and configuration were otherwise unchanged.
+
+#### Architecture
+
+Modern width-64 stem, two two-layer width-64 XOR residual blocks, and four-bit
+head; exact discrete counterpart retains both residual skip positions.
+
+#### Dataset
+
+20,000 sampled 4-bit operand pairs, seed 0, 16,000 train and 4,000 validation
+examples. This is a held-out sampled split, not exhaustive truth-table
+recovery.
+
+#### Training configuration
+
+M001 config, 2000 epochs, Adam at 0.01, MSE, batch size 256, learned per-layer
+temperature, recovered `regularization_factory2` and plateau noise. Tesla T4
+runtime 2140.1 seconds. Kaggle kernel version 12. Packaged and returned SHA both
+`1f25331357476462c947b7269a47c8ebada920c9`.
+
+#### Metrics
+
+| Inference on same final checkpoint | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous soft aggregation | 0.95625 | 0.83575 |
+| Continuous hard-max | 0.9388125 | 0.77025 |
+| Exact discrete Boolean model | 0.914625 | 0.70550 |
+
+Soft-to-hard gap: 1.744 bit-accuracy points and 6.550 exact-accuracy points.
+Hard-max-to-Boolean gap: 2.419 bit-accuracy points and 6.475 exact-accuracy
+points. Total soft-to-Boolean gap: 4.163 and 13.025 points, respectively.
+At this checkpoint D_w=0.000685, D_b=0.0000662, w_corner_05=0.99720, and
+b_corner_05=0.99959. The separate Boolean circuit selected 3,756 of 17,152
+possible edges.
+
+#### Result
+
+The ordered result is `soft > hard-max > Boolean` for both bit and exact
+accuracy. Returned SHA was verified. The corrected artifact is
+`kaggle/results/1f25331_M001_modern_4bit_corrected.json`; the earlier result
+remains preserved as `kaggle/results/091faa0_M001_modern_4bit_preliminary.json`.
+
+#### Interpretation
+
+Both the continuous aggregation choice and the parameter-to-Boolean conversion
+contribute to the observed gap. The soft-to-hard change is larger than the
+hard-to-Boolean change in exact accuracy by 0.075 percentage points (6.550 vs
+6.475), so their sizes are similar in this run. Since exact accuracy is a
+nonlinear metric, these gaps are descriptive and are not additive causal
+effects. The pattern is consistent with contributions from both soft
+aggregation and thresholding; it does not prove their isolated causal impact.
+
+All four near-Boolean equivalence tests still pass, so no endpoint topology
+mismatch was found. The remaining hard-max-to-Boolean discrepancy at
+near-corner, not exactly Boolean parameters may arise from small parameter
+deviations being amplified by later layers. The training checkpoint was not
+saved, preventing a layerwise margin analysis. Future runs must save selected
+continuous and parameter-binarized checkpoints.
+
+#### What this does NOT prove
+
+This sampled run does not establish exact 256-row XOR truth-table recovery,
+generalization, reproducibility across seeds, or a benefit from residuals. No
+matched no-residual model was trained. It does not prove whether the soft
+surrogate or thresholding is the dominant cause in other configurations.
+
+#### Next question
+
+Build the exact 256-row 4-bit XOR task and compare modern residual against the
+same-depth no-residual control at seed 0. Preserve the current M001 setup for
+that matched pair and record signed skip derivatives plus correctly directed
+backpropagation transfer ratios.

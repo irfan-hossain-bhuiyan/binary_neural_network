@@ -3,7 +3,7 @@
 **Report date:** 2026-09-17
 **Working branch:** `research-modern-xor-residual`
 **Experiment:** M001, seed 0, 4-bit smoke run
-**Evidence status:** one completed, SHA-verified 2000-epoch Kaggle run; a corrected rerun that adds hard-max evaluation is currently running. No 16-bit or no-residual experiment has been run.
+**Evidence status:** two completed, SHA-verified 2000-epoch Kaggle runs of the same M001 setup; the corrected run adds hard-max evaluation. No truth-table, no-residual, 16-bit, or multi-seed experiment has been run.
 
 ## Executive summary
 
@@ -11,9 +11,9 @@ This research phase corrects the previous topology: the historical `MultiLayerLo
 
 The continuous/discrete topology has CPU tests that exhaust Boolean rows for a residual block and a complete tiny network. All 21 repository CPU tests passed after the implementation. A 4-bit M001 run completed 2000 epochs on a Kaggle Tesla T4 in 38.6 minutes. It became operationally near-Boolean early, but readiness did not mean task success: at epoch 5 the thresholded model had only 7.2% exact accuracy. At epoch 2000 the continuous model reached 95.6% bit accuracy and 83.6% exact accuracy; the thresholded Boolean model reached 91.5% bit and 70.6% exact accuracy. The continuous-to-discrete exact-accuracy gap was 13.0 percentage points.
 
-Both residual branches were mostly polarized by the end. Their mean local direct XOR gains, `|1-2F(x)|`, were 0.978 and 0.990. The measured activation gradients were nonzero but declined through the blocks. There is no same-depth no-residual control yet, so these measurements do not establish that residuals improve gradient flow or task performance.
+Both residual branches were mostly polarized by the end. Their mean local direct XOR gains, `|1-2F(x)|`, were 0.978 and 0.990. Backpropagation transfer ratios from block output to input were above 1 for this diagnostic batch, so the earlier report's attenuation wording was reversed and has been corrected. There is no same-depth no-residual control, so these measurements do not establish that residuals improve gradient flow or task performance.
 
-The first run did not calculate continuous hard-max accuracy. A second run with that required comparison was submitted as kernel version 12 and was still `RUNNING` when this report was drafted. That comparison is necessary to distinguish a conversion mismatch from a change caused by the continuous soft aggregation. The first run is therefore preliminary evidence, not a completed semantic-consistency result.
+The first run did not calculate continuous hard-max accuracy. A corrected run on the same training configuration evaluated soft, hard-max, and Boolean inference on the same final checkpoint. Accuracy decreased in that order, showing that both aggregation and parameter thresholding contribute descriptively. The corrected SHA was verified.
 
 ## Architecture and implementation
 
@@ -82,6 +82,7 @@ Result: **21 passed**. A one-epoch local harness smoke also exercised the modern
 | Readiness rule | `D_w≤0.01`, `D_b≤0.01`, `w_corner_05≥0.95`, `b_corner_05≥0.95` |
 | Hardware / runtime | Kaggle Tesla T4; 2,316.4 seconds (38.6 minutes) |
 | Packaged revision | `091faa02bd60a8cb2f53fe6efb800fb3c5c9cb6f`, Kaggle kernel version 11; returned SHA matched |
+| Corrected evaluation revision | `1f25331357476462c947b7269a47c8ebada920c9`, Kaggle kernel version 12; returned SHA matched; 2140.1 seconds |
 
 Layer initializers were specified explicitly, using normal distributions with these means: stem 1.0; block 0 layer 1: 0.0; block 0 layer 2: 1.0; block 1 layer 1: 0.0; block 1 layer 2: 1.0; head: 0.0. Bias initialization mean was 1.0 at every layer. The initial effective parameter means after `[0,1]` clamping were not equal to those raw initializer means; measured weight means by layer were 0.599, 0.270, 0.174, 0.154, 0.237, and 0.103. Initial bias means were 0.678, 0.684, 0.694, 0.656, 0.680, and 0.676.
 
@@ -94,6 +95,23 @@ The archived complete trajectory is in [`091faa0_M001_modern_4bit_preliminary.js
 ![M001 training task loss and regularization loss](figures/m001_training_losses.png)
 
 ![Continuous and thresholded validation accuracies; hollow markers are not ready](figures/m001_accuracy_trajectory.png)
+
+The trajectory plot above is from kernel version 11 and does not include
+hard-max values. Kernel version 12 evaluated the final checkpoint three ways:
+
+| Inference mode | Validation bit accuracy | Validation exact accuracy |
+|---|---:|---:|
+| Continuous soft aggregation | 0.95625 | 0.83575 |
+| Continuous hard-max | 0.9388125 | 0.77025 |
+| Exact discrete Boolean | 0.914625 | 0.70550 |
+
+Soft-to-hard gaps are 1.744 bit-accuracy points and 6.550 exact-accuracy
+points. Hard-to-Boolean gaps are 2.419 and 6.475 points. Thus the pattern is
+`soft > hard > Boolean`: both aggregation and thresholding contribute
+descriptively, with similar exact-accuracy gaps. Exact accuracy is nonlinear,
+so these differences are not additive causal effects. The corrected-run
+artifact is
+[`1f25331_M001_modern_4bit_corrected.json`](../kaggle/results/1f25331_M001_modern_4bit_corrected.json).
 
 ![Weight/bias distance and corner fractions](figures/m001_polarization_readiness.png)
 
@@ -148,14 +166,18 @@ The direct derivative diagnostic is `|1-2F(x)|`, calculated from the continuous 
 
 These final gains show that the local direct derivative was usually near magnitude 1 rather than near zero. They do **not** prove that the full network’s gradients were preserved: the nonlinear branch derivatives and downstream layers still affect the total gradient, and there is no no-residual control for comparison.
 
-On a 512-row validation diagnostic batch, actual mean absolute activation gradients entering/leaving each block were:
+Backpropagation travels from block output `y` to block input `x`. On a 512-row validation diagnostic batch, measured backward gradient transfer was:
 
-| Block | Input activation | Output activation | Output/input mean-absolute ratio | Input/output gradient norm |
+| Block | `||grad_input|| / ||grad_output||` | `mean_abs_grad_input / mean_abs_grad_output` | Input/output gradient norms |
 |---|---:|---:|---:|---:|
-| 1 | 1.743e-4 | 2.552e-5 | 0.146 | 0.0608 / 0.0150 |
-| 2 | 2.552e-5 | 9.765e-6 | 0.383 | 0.0150 / 0.0131 |
+| 1 | 4.047 | 6.831 | 0.0608 / 0.0150 |
+| 2 | 1.149 | 2.611 | 0.0150 / 0.0131 |
 
-Gradients were nonzero, but small and attenuated in mean absolute value across both block activations. The block gradient norms also declined through the first block and slightly through the second. This is not evidence of a residual gradient advantage because we did not measure the matched control.
+The gradients were larger at the block input than output. Because backpropagation goes output-to-input, these ratios are above 1 and do not show backward attenuation across the measured block activations. Magnitudes remain small in absolute terms, especially by the second block. This single-model measurement cannot establish a residual advantage without the matched control.
+
+The first run recorded only `abs(1-2F(x))`, not signed `1-2F(x)`, so positive versus negative direct derivatives were not counted. Absolute gain near 1 is consistent with either `F≈0` and a positive path or `F≈1` and a sign-reversed path. Signed statistics remain unmeasured.
+
+As a Boolean flip mask, the branch is mostly 1 on these activations: block 1 mask-1 fraction 0.7884 (mask-0 0.2116), block 2 mask-1 fraction 0.9530 (mask-0 0.0470). The output differs from its input at those rates. A mask near 1 behaves approximately like NOT on those bits; this describes the learned transformation without judging it.
 
 Named parameter-gradient mean magnitudes at the final epoch were: stem `3.38e-4`; block 1 layer 1 `2.45e-5`; block 1 layer 2 `1.34e-5`; block 2 layer 1 `7.92e-6`; block 2 layer 2 `3.79e-6`; head `6.70e-5`. The small gradients in later block logic layers are a potential failure mode worth examining in the next approved experiment.
 
@@ -172,13 +194,13 @@ At epoch 2000 the thresholded network selected 3,756 of 17,152 possible edges (2
 | Block 2, layer 2 | 64→64 | 971 | 23.71% | 677 |
 | Head | 64→4 | 27 | 10.55% | 23 |
 
-The completed preliminary run compared the continuous soft model to the converted Boolean network. It did **not** measure the continuous hard-max model. Therefore its 13.025-point exact-accuracy difference cannot yet be assigned solely to discretization: the soft aggregator and continuous intermediate activations may account for part of it. The conversion invariants passed exactly at Boolean endpoints in local exhaustive tests. The corrected run is intended to report all three on the same validation rows:
+The corrected run separates the preliminary 13.025-point soft-to-Boolean exact gap into a 6.550-point soft-to-hard gap and a 6.475-point hard-to-Boolean gap. The conversion invariants pass exactly at Boolean endpoints in local exhaustive tests. At this near-corner checkpoint, thresholding small residual parameter fractions and their propagation through later layers may explain some of the hard-to-Boolean difference. Model weights were not saved, so this could not be probed layer by layer.
 
 1. Continuous model with existing soft aggregation.
 2. Continuous model with hard-max logic layers.
 3. Separate discrete Boolean model.
 
-The corrected run is Kaggle kernel version 12 from commit `1f25331357476462c947b7269a47c8ebada920c9`. It was still running at report time, so its result is not included here. The exact run record remains in `research/modern_architecture_research.md` and will be appended after it returns.
+The corrected run was Kaggle kernel version 12 from commit `1f25331357476462c947b7269a47c8ebada920c9`; its returned SHA matched. It completed 2000 epochs in 2140.1 seconds on a Tesla T4. Its training configuration and seed match the first run; the corrected revision adds hard-max evaluation.
 
 ## What the results support—and what they do not
 
@@ -193,7 +215,7 @@ Supported by current evidence:
 
 Not established:
 
-- Whether continuous hard-max matches the discrete result at the ready final checkpoint (corrected run pending).
+- Whether continuous hard-max matches the discrete result exactly at the ready checkpoint. Their exact accuracies differ by 6.475 points although endpoint tests pass; no model checkpoint is available for deeper mismatch analysis.
 - Whether XOR residuals improve gradients or task learning. There is no matched no-residual run.
 - Whether 16-bit XOR is learnable under this setup. No 16-bit run was started.
 - Whether these metrics reproduce across seeds. Only seed 0 was run.
@@ -226,4 +248,4 @@ MPLCONFIGDIR=/tmp/mplconfig python research/plot_modern_architecture_report.py
 
 M001’s 4-bit run shows partial task learning, strong Boolean polarization, and a material soft-to-discrete gap. Readiness by itself was an unreliable proxy for task success, and the run continued learning after it first became ready. The branch measurements are consistent with a strong local XOR skip derivative, but actual activation gradients still attenuate through the blocks. The data do not yet tell us whether the residual architecture is better than an equally deep network without residuals.
 
-The corrected hard-max/Boolean comparison is the only already-submitted run still outstanding. No further experiments should be started until this report and that comparison are reviewed. In particular, the 16-bit model, no-residual control, and additional seeds remain unrun so the next research choice can be made from this report.
+The corrected soft/hard/Boolean comparison is complete and appended to the canonical notebook. It shows that both the continuous aggregation and thresholding matter on this run. No exact truth-table or matched no-residual experiment has been run. Those are the next controlled questions; no temperature, regularization, stochastic-inference, or MNIST experiment has been run.
