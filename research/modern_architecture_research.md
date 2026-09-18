@@ -39,6 +39,8 @@ experiment bookkeeping thresholds, not established scientific constants.
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
 | M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
+| M001-R | pending | Recover complete 4-bit XOR function with residuals | exact 256-row table | same modern residual topology | 0 | planned; next run |
+| M001-NR | pending | Matched same-depth graph without residual XOR | same exact 256-row table | same modern layers, residual disabled | 0 | planned matched control |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -264,3 +266,171 @@ Build the exact 256-row 4-bit XOR task and compare modern residual against the
 same-depth no-residual control at seed 0. Preserve the current M001 setup for
 that matched pair and record signed skip derivatives plus correctly directed
 backpropagation transfer ratios.
+
+## Research roadmap
+
+This roadmap is ordered and does not authorize running every item without
+review. Complete one experiment at a time, commit its config/code before any
+Kaggle submission, append its outcome here, and stop when results materially
+change the working hypothesis. The historical shallow model is archived
+context only.
+
+| ID | Parent | Single primary variable / question | Dataset | Status |
+|---|---|---|---|---|
+| M001-R | sampled M001 | Exact truth-table recovery with XOR residuals | all 256 rows, 4-bit XOR | next |
+| M001-NR | M001-R matched setup | Disable only residual XOR operations in same-depth graph | same 256 rows | pending matched run |
+| M002 | M001-R | Fixed temperature 1.0; no temperature dynamics; tau penalty 0 | same 256 rows | pending |
+| M003 | M002 | Remove explicit regularization only | same 256 rows | pending |
+| M004 | M003 | Remove plateau noise only | same 256 rows | pending |
+| P001 | saved XOR checkpoint | Independent Bernoulli parameter sampling, no retraining | 256-row XOR table | pending; checkpoint required |
+| D001 | selected successful M002–M004 setup | Modern binary-image classification | binarized MNIST | later, after XOR protocol |
+| P004 | D001 checkpoint | Sample Boolean circuits at S=1,4,16,64,128 | same MNIST checkpoint | pending |
+| P002 | P001 | Correlated parameter sampling | future | hypothesis only |
+| P003 | P001 | Probability-consistent OR `1-Π(1-p)` | future | hypothesis only |
+| Fashion-MNIST | D001/P004 | Same exact uint8 threshold | future | not in current phase |
+
+### Questions to answer
+
+1. Do XOR residual blocks improve optimization compared with a matched deep no-residual Boolean network?
+2. Are learned/sharpened temperatures necessary?
+3. Does the modern architecture train without explicit discretization regularization?
+4. Does it train without plateau noise?
+5. Can it recover the complete 4-bit XOR truth table?
+6. How well does it perform on binarized MNIST?
+7. Can fractional `w,b` act usefully as Bernoulli parameters over discrete Boolean circuits?
+8. Does Monte Carlo sampled-circuit inference approximate the continuous output?
+9. Does stochastic circuit averaging improve MNIST over a single thresholded circuit?
+10. Is independent Bernoulli sampling sufficient, or do parameter correlations matter?
+11. Would a probability-consistent OR surrogate better match Monte Carlo expectation?
+
+### Deterministic and stochastic tracks
+
+**Deterministic circuit track:** seek useful task performance together with
+parameters close to Boolean corners, then evaluate one exact Boolean network.
+From future runs onward call the operational predicate
+`PARAMETER_BINARIZED`, not task success. Initially it uses `D_w,D_b<=0.01` and
+`w_corner_05,b_corner_05>=0.95`. These thresholds are operational bookkeeping,
+not validated scientific boundaries.
+
+**Stochastic circuit track:** fractional `w,b` are Bernoulli probabilities,
+not necessarily unfinished values. Do not force these models to corners for
+P001/P004. Report parameter entropy and Monte Carlo/predictive behavior
+separately from deterministic polarization.
+
+For Boolean input `x` and `B~Bernoulli(b)`,
+`E[x XOR B]=x+b-2xb`. For independent `W~Bernoulli(w)`,
+`E[W*(x XOR B)]=w*(x+b-2xb)`. This is an exact edge-level expectation. It does
+not prove the full network equals the expectation of sampled circuits:
+Boolean OR aggregation, dependencies across layers, shared random upstream
+values, and XOR residual dependencies all matter. In particular, the current
+softmax-weighted OR is not established as `E[Boolean OR]`.
+
+### M001-R — Exact 4-bit XOR truth table, residual enabled
+
+- **Parent experiment:** sampled 4-bit M001.
+- **Hypothesis:** the fixed M001 training procedure can recover every row of
+the complete 4-bit XOR function.
+- **Single changed variable:** dataset protocol changes from 20,000 sampled
+pairs to all 256 input rows exactly once.
+- **Architecture:** 8→64 stem, two 64→64→64 XOR residual blocks, 64→4 head.
+- **Metrics:** full-table bit/exact accuracy and exact function recovery;
+task/regularization loss; parameter binarization; soft, hard-max and Boolean
+outputs; signed skip derivatives and correctly directed backward transfer.
+- **Scope:** exhaustive function recovery, not generalization to unseen inputs.
+
+### M001-NR — Matched modern deep control
+
+- **Parent experiment:** M001-R configuration and truth table.
+- **Hypothesis:** XOR residual operations change optimization or recovery in
+the same-depth modern graph.
+- **Single changed variable:** `residual_enabled=false`; keep stem, four block
+logic layers, head, dimensions, parameter shapes, initialization, seed,
+optimizer, regularization, temperature and budget identical.
+- **Metrics:** function recovery, task trajectory, D_w/D_b and corner fractions,
+activations, parameter gradients, signed skip derivative in the residual arm,
+and backward activation-gradient transfer.
+- Do not attribute differences to the historical shallow model or depth.
+
+### M002 — Fixed temperature
+
+- **Parent experiment:** M001-R residual truth-table baseline.
+- **Hypothesis:** temperature dynamics are necessary for optimization.
+- **Single change:** fixed temperature 1.0, `learnable_tau=false`, no scheduler,
+`tau_lambda=0`. Retain weight/bias regularization, plateau noise, task,
+optimizer, initialization, architecture and budget.
+
+### M003 — No explicit regularization
+
+- **Parent experiment:** M002.
+- **Hypothesis:** task loss alone can recover the function and useful Boolean
+parameters.
+- **Single change:** regularization function is `None`. Keep fixed temperature,
+plateau noise and all other M002 settings unchanged.
+
+### M004 — No plateau noise
+
+- **Parent experiment:** M003.
+- **Hypothesis:** plateau perturbations help or hurt clean modern optimization.
+- **Single change:** remove `noise_on_plateau`; retain numerical parameter
+clamping. This leaves task loss, ordinary optimizer, fixed temperature, no
+explicit regularizer and no plateau perturbation.
+
+### P001 — Sampled Boolean model ensemble on XOR
+
+- **Parent experiment:** a saved trained modern checkpoint (prefer M003/M004
+if parameters remain fractional); no retraining.
+- **Hypothesis:** continuous output approximates mean outputs from exact Boolean
+circuits sampled independently from effective `w,b` probabilities.
+- Sample each Boolean parameter once per ensemble member, then use that same
+member over every truth-table row. Fix a sampling seed and reuse nested samples
+where practical at S=1,4,16,64,256,1024.
+- Compare continuous soft, continuous hard-max, deterministic threshold Boolean
+and Monte Carlo marginal output. Record marginal Brier error, thresholded
+ensemble accuracies/recovery, predictive variance, ensemble diversity, output
+MAE/MSE versus Monte Carlo means, and weight/bias entropy (mean, median, by
+layer).
+- Independent sampling is an assumption. Correlations are future P002, not
+part of P001. Do not change the OR rule; probability-consistent OR is P003.
+
+### D001 — Binarized MNIST
+
+- **Parent experiment:** selected M002–M004 configuration that successfully
+trains, with rationale recorded.
+- Use official MNIST split; fixed-seed 55k train / 5k validation from official
+training data and reserve the official 10k test set for final evaluation only.
+- Binarize original uint8 pixels as `pixel>=128` before flattening 28×28 to
+784. Test 0, 127, 128 and 255. Do not normalize or interpolate first.
+- Architecture: 784→64 stem, two width-64 XOR residual blocks, 64→10 head;
+ten-bit one-hot targets and existing MSE initially.
+- Metrics: continuous top-1, MSE, thresholded one-hot bit accuracy, parameter
+binarization and entropy; discrete valid-one-hot, all-zero, multi-hot, strict
+accuracy (exactly one correct active bit), and conditional accuracy given
+valid one-hot. Keep the official test set out of checkpoint/config selection.
+
+### P004 — Sampled Boolean ensemble on MNIST
+
+- **Parent experiment:** exact D001 continuous checkpoint; no retraining.
+- Sample one independent Boolean model per ensemble member for the whole
+evaluation dataset at S=1,4,16,64,128. Average per-bit outputs as marginals;
+classify with `argmax` even if marginals do not sum to one.
+- Compare continuous top-1, deterministic strict Boolean accuracy and ensemble
+top-1 on the same official test set. Optional normalized marginals must be
+labeled a heuristic; report their NLL/Brier/predictive entropy alongside raw
+marginals, parameter entropy and bitwise variance.
+
+### Future hypotheses only
+
+- **P002-correlated-parameter-sampling:** shared/structured latent sampling to
+test whether independent Bernoulli parameters discard correlations. Do not
+implement yet.
+- **P003-probabilistic-OR-surrogate:** test independent-event OR probability
+`1-product(1-p_i)` against sampled circuits. Keep separate from P001.
+- Fashion-MNIST with the same uint8 threshold only after MNIST is understood.
+
+## Current pause point
+
+M001's corrected result shows substantial soft-to-hard and hard-to-Boolean
+gaps of similar size. It supports moving to exact truth-table recovery and the
+matched no-residual control next. Temperature, regularization, stochastic
+inference and MNIST remain untouched; no later experiment is being started by
+this roadmap update.
