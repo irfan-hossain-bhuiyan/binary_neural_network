@@ -41,6 +41,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 | M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
 | M001-R | `6a33da88923b466e6498ef940d46b02742fc82e2` | Evaluate exact full-table recovery with residual topology | exact 256-row table | stem64 + 2 residual blocks + head | 0 | 2000 epochs; function recovery false; soft/hard/Boolean exact 0.5859/0.1641/0.1680; T4 62.0s |
 | M001-NR | `feb9db19e6bf4be4ae73699f5bca183c78683d5a` | Matched same-depth graph without residual XOR | exact 256-row table | same modern layers, residual disabled | 0 | 2000 epochs; function recovery false; final soft/hard/Boolean exact 0.3789/0.1797/0.1172; T4 70.1s |
+| M002 | `f8e998fdb4948d48f7f24122de2534874e83116a` | Test whether learned temperature dynamics are needed | exact 256-row table | modern residual, tau fixed at 1 | 0 | 2000 epochs; polarized but near-chance exact accuracy 0.0898/0.0625/0.0625; T4 55.6s |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -638,3 +639,91 @@ With topology comparisons complete at the initial recipe, does fixing
 temperature at 1 and removing temperature dynamics improve the stability and
 Boolean recovery of the residual modern architecture while retaining the
 weight/bias regularizer? Proceed to M002 as one temperature-policy change.
+
+
+## M002 — Fixed temperature, no temperature dynamics
+
+### Parent experiment
+
+M001-R, modern residual architecture trained on the exact 256-row 4-bit XOR
+table.
+
+### Hypothesis
+
+Test whether the residual architecture can learn without per-layer learned
+temperature sharpening, while retaining weight/bias discretization
+regularization and the existing OR surrogate.
+
+### Single changed variable
+
+Temperature policy only: `learnable_tau=false`, fixed temperature 1.0, no
+temperature scheduler, and `tau_lambda=0`. Weight/bias discretization
+regularization (`disc_lambda=0.5`), plateau-noise constraint, optimizer, loss,
+initialization, architecture, truth table, seed and budget remain unchanged.
+
+### Architecture
+
+Width-64 modern network with stem, two two-layer XOR residual blocks, and
+4-output head; residual enabled.
+
+### Dataset
+
+Exhaustive 256-row 4-bit XOR truth table; no held-out data.
+
+### Training configuration
+
+Seed 0, 2000 epochs, Adam 0.01, MSE, batch 256, fixed temperature 1.0,
+`regularization_factory2` with `disc_lambda=0.5` and `tau_lambda=0`, and plateau
+noise std 0.3. Tesla T4 runtime 55.61 s, Kaggle kernel v15. Packaged and
+returned SHA verified: `f8e998fdb4948d48f7f24122de2534874e83116a`. Result and
+checkpoint: `kaggle/results/f8e998f_M002-fixed-temperature_seed0.json` and
+`kaggle/results/f8e998f_M002_seed0.pt`.
+
+### Metrics
+
+| Final inference on all rows | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous soft | 0.53223 | 0.08984 |
+| Continuous hard-max | 0.50000 | 0.06250 |
+| Exact Boolean | 0.50000 | 0.06250 |
+
+Chance exact accuracy for a uniformly random 4-bit output is 1/16=0.0625.
+The model did not recover the function. It first met the operational
+parameter-binarized criterion at epoch 303. Final D_w=0.000670, D_b=0.000106,
+w_corner_05=0.99598 and b_corner_05=0.99948. Thus parameters polarized while
+task learning remained close to chance. The best continuous exact accuracy
+was only 0.12891 at epoch 1400. Final circuit complexity was 2,982/17,152
+selected edges (17.39%).
+
+### Residual behavior and gradients
+
+At the final diagnostic batch, branch signed direct-gain means were 0.6563
+and 0.5965; absolute means 0.6563 and 0.6045. Mask-one/output-flip fractions
+were 0.0000 and 0.0619. The residual branches therefore rarely flip
+activations, unlike the mostly-one masks in M001-R. Backprop transfer
+`||grad_input||/||grad_output||` was 3.036 and 0.957 by L2 norm (mean-absolute
+ratios 2.783 and 0.828). These summaries do not establish why the model failed
+to learn.
+
+### Result
+
+Fixed temperature at 1 with the weight/bias regularizer sharply reduced task
+performance relative to M001-R. This is evidence that the temperature
+dynamics in the parent recipe may be important under this setup, but the
+comparison is one seed and does not isolate every interaction with training
+trajectory. Parameter binarization alone again fails to imply function
+recovery. The trajectory is plotted with the two M001 truth-table runs.
+
+![Exact accuracy trajectories for M001-R, M001-NR, and fixed-temperature M002](figures/m001_truth_table_residual_control.png)
+
+### What this does NOT prove
+
+It does not establish that all fixed temperatures fail, that temperature
+sharpening alone caused the difference, or that the model cannot learn with
+other temperature values. The tested value was exactly 1.0, as specified.
+
+### Next question
+
+Holding temperature fixed at 1, does task optimization without explicit
+weight/bias discretization regularization recover useful continuous or
+Boolean performance? M003 changes only the regularization loss.

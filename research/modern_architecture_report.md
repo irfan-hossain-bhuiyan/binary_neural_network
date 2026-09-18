@@ -338,3 +338,35 @@ win at final metrics, while no-residual wins at best observed checkpoints.
 Continue with the isolated M002 temperature-policy test on the residual
 architecture before deciding whether to spend on larger tasks. Full trajectories
 and diagnostics are retained in the two archived JSON files.
+
+
+## M002: fixed temperature
+
+M002 fixes every logic-layer temperature at 1 (`learnable_tau=false`) and sets
+`tau_lambda=0`, leaving the weight/bias regularizer and plateau noise active.
+All other settings match M001-R. The run used seed 0, 2000 epochs, Tesla T4
+(55.61 s), Kaggle v15; packaged and returned SHA verified
+`f8e998fdb4948d48f7f24122de2534874e83116a`.
+
+| Inference | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous soft | 0.53223 | 0.08984 |
+| Continuous hard-max | 0.50000 | 0.06250 |
+| Boolean | 0.50000 | 0.06250 |
+
+Despite near-chance task results (chance exact = 0.0625), parameters were
+strongly polarized: the readiness predicate first passed at epoch 303 and
+final D_w/D_b were 0.000670/0.000106. The circuit selected 2,982 of 17,152
+possible edges. The best continuous exact accuracy was 0.12891 at epoch 1400.
+This demonstrates the separation between parameter binarization and function
+recovery in this run.
+
+Final branch direct-gain means were +0.6563/+0.5965 (absolute means
+0.6563/0.6045); branch flip fractions were 0.0000/0.0619. Backward gradient
+transfer ratios were 3.036/0.957 by L2 norm and 2.783/0.828 by mean absolute
+gradient.
+
+The result suggests the learned temperature policy matters under this recipe,
+but a single seed cannot establish a general necessity. M003 will hold the
+temperature fixed and remove only explicit weight/bias discretization
+regularization.

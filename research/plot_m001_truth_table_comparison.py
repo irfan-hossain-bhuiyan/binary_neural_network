@@ -11,9 +11,10 @@ FIGURES = ROOT / "research" / "figures"
 runs = {
     "M001-R (XOR residual)": RESULTS / "6a33da8_M001-R_seed0.json",
     "M001-NR (no residual)": RESULTS / "feb9db1_M001-NR_seed0.json",
+    "M002 (fixed temperature)": RESULTS / "f8e998f_M002-fixed-temperature_seed0.json",
 }
 colors = {"soft": "#1f77b4", "hard-max": "#ff7f0e", "Boolean": "#2ca02c"}
-fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+fig, axes = plt.subplots(1, len(runs), figsize=(18, 5), sharey=True)
 for ax, (label, path) in zip(axes, runs.items()):
     metrics = json.loads(path.read_text())["metrics"]
     trajectory = metrics["trajectory"]
