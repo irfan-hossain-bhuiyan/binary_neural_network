@@ -65,3 +65,84 @@ def test_parameter_binarized_is_only_a_corner_predicate():
                                     "w_corner_05": 0.96, "b_corner_05": 0.94})
     assert not parameter_binarized({"D_w": 0.5, "D_b": 0.5,
                                     "w_corner_05": 1.0, "b_corner_05": 1.0})
+
+
+def test_temperature_free_model_has_boolean_conversion_and_residual_topology():
+    from models import TemperatureFreeModernLogicGateNet
+    model = TemperatureFreeModernLogicGateNet(
+        input_dim=4, output_dim=2, width=5, num_residual_blocks=2,
+        gate_initializations=[0.75, 0.25, 0.75, 0.25, 0.75, 0.25])
+    discrete = model.to_discrete()
+    assert len(model.expectation_layers) == len(discrete.expectation_layers) == 6
+    assert [b.residual_enabled for b in model.blocks] == [True, True]
+    for layer, dlayer in zip(model.expectation_layers, discrete.expectation_layers):
+        gate, bias = layer.to_discrete()
+        assert torch.equal(gate, dlayer.weight)
+        assert torch.equal(bias, dlayer.bias)
+    init = model.expectation_layers[0]
+    assert torch.allclose(init.effective_gate(), torch.full_like(init.theta, 0.75), atol=1e-6)
+    assert not any("temperature" in name or "tau" in name for name, _ in model.named_parameters())
+
+
+def test_temperature_free_layer_zeroes_all_zero_literals_for_arbitrary_strength():
+    from layers import TemperatureFreeLogicLayer
+    layer = TemperatureFreeLogicLayer(4, 2, gate_initialization=0.6)
+    with torch.no_grad():
+        layer.theta.copy_(torch.tensor([[-10.0, -2.0, 0.5, 10.0], [4.0, -6.0, 2.0, -1.0]]))
+        layer.bias.zero_()
+    assert torch.allclose(layer(torch.zeros(3, 4)), torch.zeros(3, 2), atol=1e-8)
+
+
+def test_temperature_free_softmax_strength_self_sharpens_to_one():
+    from layers import TemperatureFreeLogicLayer
+    layer = TemperatureFreeLogicLayer(5, 1, gate_initialization=0.5)
+    x = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]])
+    observed = []
+    with torch.no_grad():
+        layer.bias.zero_()
+        eps_r = 1e-3
+        for selected_r in (1.0, 2.0, 5.0, 10.0, 20.0):
+            raw_r = torch.full_like(layer.theta, eps_r)
+            raw_r[0, 0] = selected_r
+            layer.theta.copy_(torch.log(torch.expm1(raw_r)))
+            observed.append(layer(x).item())
+    assert observed == sorted(observed)
+    assert observed[-1] > 0.999
+
+
+def test_temperature_free_selected_but_inactive_literal_outputs_zero():
+    from layers import TemperatureFreeLogicLayer
+    layer = TemperatureFreeLogicLayer(3, 1, gate_initialization=0.5)
+    with torch.no_grad():
+        layer.theta.fill_(torch.log(torch.expm1(torch.tensor(20.0))).item())
+        layer.bias.zero_()
+    assert torch.equal(layer(torch.zeros(1, 3)), torch.zeros(1, 1))
+
+
+def test_temperature_free_layer_approaches_boolean_or_for_polarized_strengths():
+    from layers import TemperatureFreeLogicLayer
+    torch.manual_seed(112)
+    layer = TemperatureFreeLogicLayer(16, 1, gate_initialization=0.5)
+    selected = torch.tensor([1, 3, 5, 9, 12, 15])
+    with torch.no_grad():
+        layer.bias.zero_()
+        r = torch.full_like(layer.theta, 1e-3)
+        r[:, selected] = 20.0
+        layer.theta.copy_(torch.log(torch.expm1(r)))
+    x = torch.randint(0, 2, (512, 16)).float()
+    expected = x[:, selected].bool().any(dim=-1, keepdim=True).float()
+    assert (layer(x) - expected).abs().max() < 0.002
+
+
+def test_temperature_free_gate_initialization_maps_through_inverse_softplus_atanh():
+    from models import TemperatureFreeModernLogicGateNet
+    model = TemperatureFreeModernLogicGateNet(
+        4, 2, width=3, num_residual_blocks=2,
+        gate_initializations=[0.75, 0.25, 0.75, 0.25, 0.75, 0.25])
+    for layer, expected in zip(model.expectation_layers,
+                               [0.75, 0.25, 0.75, 0.25, 0.75, 0.25]):
+        assert torch.allclose(layer.effective_gate(), torch.full_like(layer.theta, expected), atol=1e-6)
+        r = torch.atanh(torch.tensor(expected))
+        theta = torch.log(torch.expm1(r))
+        assert torch.allclose(layer.theta, torch.full_like(layer.theta, theta), atol=1e-6)
+    assert not any("temperature" in n or "tau" in n for n, _ in model.named_parameters())

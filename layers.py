@@ -187,3 +187,81 @@ class OrNorGateLayer(nn.Module):
             out = self.forward(x)
         variance = out.var(dim=0, unbiased=False).mean()
         return (0.5**2) - variance
+
+
+class TemperatureFreeLogicLayer(nn.Module):
+    """Positive edge-strength logic layer with self-sharpening soft aggregation.
+
+    For literal ``a = xor(x, bias)``, the layer returns
+    ``softmax(a * r) · (a * tanh(r))`` where ``r=softplus(theta)``.
+    There is no separate temperature parameter.
+    """
+
+    def __init__(self, in_features: int, out_features: int,
+                 gate_initialization: float = 0.5,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 use_softmax: bool = True, grad_scalar: bool = True):
+        super().__init__()
+        if not 0.0 < gate_initialization < 1.0:
+            raise ValueError("gate_initialization must be strictly between 0 and 1")
+        self.in_features = in_features
+        self.out_features = out_features
+        self.use_softmax = use_softmax
+        self.grad_scalar = grad_scalar
+        self.theta = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features, in_features))
+        r_init = torch.atanh(torch.tensor(float(gate_initialization)))
+        theta_init = torch.log(torch.expm1(r_init))
+        nn.init.constant_(self.theta, float(theta_init))
+        bias_initialization(self.bias)
+
+    def raw_strength(self) -> torch.Tensor:
+        return torch.nn.functional.softplus(self.theta)
+
+    def effective_gate(self) -> torch.Tensor:
+        return torch.tanh(self.raw_strength())
+
+    def actual_weight(self) -> torch.Tensor:
+        """Compatibility with shared diagnostics: return gate g=tanh(softplus(theta))."""
+        return self.effective_gate()
+
+    def actual_bias(self) -> torch.Tensor:
+        return cast(torch.Tensor, leaky_clamp(self.bias, 0.0, 1.0, 0.1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        literal = xor(x.unsqueeze(1), self.actual_bias().unsqueeze(0))
+        strength = self.raw_strength().unsqueeze(0)
+        gate = torch.tanh(strength)
+        value = literal * gate
+        if self.use_softmax:
+            probability = F.softmax(literal * strength, dim=-1)
+            output = (probability * value).sum(dim=-1)
+            if self.grad_scalar and output.requires_grad:
+                max_probability = probability.max(dim=-1).values.detach()
+                output.register_hook(lambda grad: grad / (max_probability + 2e-1))
+            return output
+        return value.max(dim=-1).values
+
+    def to_discrete(self, threshold: float = 0.5) -> tuple[torch.Tensor, torch.Tensor]:
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("threshold must be in [0,1]")
+        return self.effective_gate().detach() >= threshold, self.actual_bias().detach() >= threshold
+
+
+class TemperatureFreeXorResidualBlock(nn.Module):
+    """Two temperature-free logic layers and a width-preserving XOR skip."""
+
+    def __init__(self, width: int, gate_initializations: tuple[float, float],
+                 bias_initialization: Callable[..., Any], use_softmax: bool = True,
+                 residual_enabled: bool = True, grad_scalar: bool = True):
+        super().__init__()
+        self.layer1 = TemperatureFreeLogicLayer(
+            width, width, gate_initializations[0], bias_initialization, use_softmax, grad_scalar)
+        self.layer2 = TemperatureFreeLogicLayer(
+            width, width, gate_initializations[1], bias_initialization, use_softmax, grad_scalar)
+        self.residual_enabled = residual_enabled
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h1 = self.layer1(x)
+        h2 = self.layer2(h1)
+        return xor(x, h2) if self.residual_enabled else h2

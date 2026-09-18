@@ -7,7 +7,8 @@ from typing import Any, Callable, cast
 import torch
 import torch.nn as nn
 
-from layers import OrNorGateLayer, XorResidualLogicBlock
+from layers import (OrNorGateLayer, XorResidualLogicBlock,
+                    TemperatureFreeLogicLayer, TemperatureFreeXorResidualBlock)
 
 
 class MultiLayerLogicGateNet(nn.Module):
@@ -339,4 +340,62 @@ class ModernLogicGateNet(nn.Module):
             for src, dst in zip(self.expectation_layers, result.expectation_layers):
                 dst.weight.copy_(src.actual_weight() >= threshold)
                 dst.bias.copy_(src.actual_bias() >= threshold)
+        return result
+
+
+class TemperatureFreeModernLogicGateNet(nn.Module):
+    """Modern XOR-residual graph using positive self-sharpening edge strengths."""
+
+    def __init__(self, input_dim: int, output_dim: int, width: int = 64,
+                 num_residual_blocks: int = 2,
+                 gate_initializations: list[float] | None = None,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 use_softmax: bool = True, residual_enabled: bool = True,
+                 grad_scalar: bool = True):
+        super().__init__()
+        if width <= 0 or num_residual_blocks < 0:
+            raise ValueError("width must be positive and number of residual blocks nonnegative")
+        self.input_dim, self.output_dim = input_dim, output_dim
+        self.width, self.num_residual_blocks = width, num_residual_blocks
+        self.residual_enabled = residual_enabled
+        count = 2 + 2 * num_residual_blocks
+        if gate_initializations is None:
+            gate_initializations = [0.75 if i % 2 == 0 else 0.25 for i in range(count)]
+        if len(gate_initializations) != count:
+            raise ValueError(f"expected {count} gate initializers, got {len(gate_initializations)}")
+        self.stem = TemperatureFreeLogicLayer(
+            input_dim, width, gate_initializations[0], bias_initialization, use_softmax, grad_scalar)
+        self.blocks = nn.ModuleList()
+        for i in range(num_residual_blocks):
+            j = 1 + 2 * i
+            self.blocks.append(TemperatureFreeXorResidualBlock(
+                width, (gate_initializations[j], gate_initializations[j + 1]),
+                bias_initialization, use_softmax, residual_enabled, grad_scalar))
+        self.head = TemperatureFreeLogicLayer(
+            width, output_dim, gate_initializations[-1], bias_initialization, use_softmax, grad_scalar)
+
+    @property
+    def expectation_layers(self) -> list[TemperatureFreeLogicLayer]:
+        result = [self.stem]
+        for block in self.blocks:
+            result.extend([block.layer1, block.layer2])
+        result.append(self.head)
+        return result
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x)
+        for block in self.blocks:
+            x = block(x)
+        return self.head(x)
+
+    def to_discrete(self, threshold: float = 0.5):
+        from discrete_logic_net import DiscreteModernLogicGateNet
+        result = DiscreteModernLogicGateNet(
+            self.input_dim, self.output_dim, self.width, self.num_residual_blocks,
+            residual_enabled=self.residual_enabled)
+        with torch.no_grad():
+            for src, dst in zip(self.expectation_layers, result.expectation_layers):
+                gate, bias = src.to_discrete(threshold)
+                dst.weight.copy_(gate)
+                dst.bias.copy_(bias)
         return result

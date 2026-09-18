@@ -35,7 +35,8 @@ from torch.optim import Adam
 from boolean_tasks import FULL_TRUTH_TABLE, build_task
 from eval_utils import evaluate_accuracy
 from initializers import NormalInitWrapper
-from models import MultiLayerLogicGateNet, ModernLogicGateNet
+from models import (MultiLayerLogicGateNet, ModernLogicGateNet,
+                    TemperatureFreeModernLogicGateNet)
 from prelude import Trainer, split_dataset, stop_on_epoch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -126,7 +127,7 @@ def init_from_spec(spec: dict):
 
 
 def build_model(model_cfg: dict, input_dim: int, output_dim: int) -> nn.Module:
-    if model_cfg.get("architecture") == "modern":
+    if model_cfg.get("architecture") in {"modern", "modern_temperature_free"}:
         width = int(model_cfg.get("width", 64))
         blocks = int(model_cfg.get("num_residual_blocks", 2))
         count = 2 + 2 * blocks
@@ -134,6 +135,18 @@ def build_model(model_cfg: dict, input_dim: int, output_dim: int) -> nn.Module:
         inits = [init_from_spec(s) for s in specs] if specs is not None else None
         if inits is not None and len(inits) != count:
             raise ValueError(f"modern model needs {count} explicit layer initializers")
+        if model_cfg.get("architecture") == "modern_temperature_free":
+            gates = model_cfg.get("gate_initializations")
+            if gates is not None:
+                gates = [float(v) for v in gates]
+            return TemperatureFreeModernLogicGateNet(
+                input_dim=input_dim, output_dim=output_dim, width=width,
+                num_residual_blocks=blocks, gate_initializations=gates,
+                bias_initialization=init_from_spec(model_cfg.get("bias_init", {"type": "normal", "mean": 1.0})),
+                use_softmax=bool(model_cfg.get("use_softmax", True)),
+                residual_enabled=bool(model_cfg.get("residual_enabled", True)),
+                grad_scalar=bool(model_cfg.get("grad_scalar", True)),
+            )
         return ModernLogicGateNet(
             input_dim=input_dim, output_dim=output_dim, width=width,
             num_residual_blocks=blocks,
@@ -382,6 +395,57 @@ def summarize_modern_layer_gradients(grad_stats: dict) -> dict:
             "first_last_gradient_ratio": ordered[0]/(ordered[-1]+1e-12) if len(ordered) > 1 else None}
 
 
+def _distribution_summary(values: torch.Tensor) -> dict:
+    values = values.detach().float().reshape(-1)
+    quantiles = torch.quantile(values, torch.tensor(
+        [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99], device=values.device))
+    return {
+        "mean": float(values.mean().item()),
+        "std": float(values.std(unbiased=False).item()),
+        "min": float(values.min().item()),
+        "max": float(values.max().item()),
+        **{key: float(value.item()) for key, value in zip(
+            ["q01", "q05", "q25", "q50", "q75", "q95", "q99"], quantiles)},
+    }
+
+
+def compute_temperature_free_parameter_stats(model: nn.Module) -> dict:
+    """Layer-wise theta/r/g summaries, including gate corner distances."""
+    result = {}
+    for i, layer in enumerate(getattr(model, "expectation_layers", [])):
+        theta = layer.theta.detach().float()
+        r = layer.raw_strength().detach().float()
+        g = layer.effective_gate().detach().float()
+        result[f"layer_{i}"] = {
+            "theta": _distribution_summary(theta),
+            "r": _distribution_summary(r),
+            "g": _distribution_summary(g),
+            "D_g": float(torch.minimum(g, 1.0 - g).mean().item()),
+            "fraction_g_le_0_01": float((g <= 0.01).float().mean().item()),
+            "fraction_g_ge_0_99": float((g >= 0.99).float().mean().item()),
+            "fraction_g_le_0_05": float((g <= 0.05).float().mean().item()),
+            "fraction_g_ge_0_95": float((g >= 0.95).float().mean().item()),
+            "fraction_g_middle_40_60": float(((g > 0.4) & (g < 0.6)).float().mean().item()),
+        }
+    return result
+
+
+def summarize_theta_gradients(grad_stats: dict) -> dict:
+    """Extract final/batch theta gradient means grouped by logic layer."""
+    mapping = {"stem.theta": "stem", "head.theta": "head"}
+    for bi in range(2):
+        for li in (1, 2):
+            mapping[f"blocks.{bi}.layer{li}.theta"] = f"block_{bi}.layer{li}"
+    result = {}
+    for name, stat in grad_stats.items():
+        if not name.endswith(".theta"):
+            continue
+        mean_abs = _to_float(getattr(stat, "mean_abs", None))
+        if mean_abs is not None:
+            result[mapping.get(name, name)] = mean_abs
+    return result
+
+
 def compute_polarization_stats(model: nn.Module) -> dict:
     """Distance-to-binary and corner-fraction metrics on effective [0,1] params."""
     with torch.no_grad():
@@ -418,7 +482,7 @@ def compute_polarization_stats(model: nn.Module) -> dict:
         c_s = corner_stats(combined)
         w_entropy = entropy(w)
         b_entropy = entropy(b)
-        return {
+        result = {
             "D_w": w_s["D"],
             "D_b": b_s["D"],
             "D_combined": c_s["D"],
@@ -439,6 +503,15 @@ def compute_polarization_stats(model: nn.Module) -> dict:
             "bias_entropy_mean": b_entropy["mean"],
             "bias_entropy_median": b_entropy["median"],
         }
+        if any(hasattr(layer, "theta") for layer in getattr(model, "expectation_layers", [])):
+            result.update({
+                "D_g": w_s["D"],
+                "g_corner_01": w_s["corner_01"],
+                "g_corner_05": w_s["corner_05"],
+                "g_corner_10": w_s["corner_10"],
+                "g_middle_40_60": w_s["middle_40_60"],
+            })
+        return result
 
 
 def parameter_binarized(polarization: dict) -> bool:
@@ -548,8 +621,17 @@ def _build_regularizer(training_cfg: dict):
     return None
 
 
-def _build_constraints(training_cfg: dict) -> list:
-    constraints: list = [MultiLayerLogicGateNet.constraint]
+def _build_constraints(training_cfg: dict, model_cfg: dict | None = None) -> list:
+    if (model_cfg or {}).get("architecture") == "modern_temperature_free":
+        def temperature_free_numerical_safety(module: nn.Module) -> None:
+            target = getattr(module, "module", module)
+            with torch.no_grad():
+                for layer in target.expectation_layers:
+                    layer.theta.clamp_(-20.0, 20.0)
+                    layer.bias.clamp_(-20.0, 20.0)
+        constraints: list = [temperature_free_numerical_safety]
+    else:
+        constraints = [MultiLayerLogicGateNet.constraint]
     for c in training_cfg.get("constraints", []) or []:
         if isinstance(c, dict) and c.get("type") == "noise_on_plateau":
             from stopping_utils import call_fn_on_plateau
@@ -622,7 +704,7 @@ def run_single(
         raise ValueError(f"Unsupported loss: {loss_name!r}")
 
     regularization_fn = _build_regularizer(training_cfg)
-    constraints = _build_constraints(training_cfg)
+    constraints = _build_constraints(training_cfg, model_cfg)
     on_epoch = _build_on_epoch(training_cfg, epochs)
 
     # ---- Epoch-0 pre-training measurement (observational only, no grad) ----
@@ -683,6 +765,10 @@ def run_single(
                 pol0.get("b_corner_05", 0.0) >= 0.95) else "diagnostic_only",
         }
         initial_state["parameter_binarized"] = parameter_binarized(pol0)
+        if model_cfg.get("architecture") == "modern_temperature_free":
+            initial_state.pop("temperatures", None)
+            initial_state.pop("taus", None)
+            initial_state["temperature_free_parameters"] = compute_temperature_free_parameter_stats(net)
 
     # Per-epoch trajectory (instrumentation, no grad).
     trajectory: list[dict] = []
@@ -797,10 +883,15 @@ def run_single(
                 "parameter_binarized": ready,
                 "discretization_ready": ready,
                 "diagnostic_discrete_status": "parameter_binarized" if ready else "diagnostic_only",
-                "temperatures": temps,
-                "taus": {k.replace("temperature", "tau"): (1.0 / v if isinstance(v, float) and v else None) for k, v in temps.items()},
                 "gradient_summary": summary,
             }
+            if model_cfg.get("architecture") == "modern_temperature_free":
+                if epoch in discrete_eval_epochs or epoch == 1:
+                    entry["temperature_free_parameters"] = compute_temperature_free_parameter_stats(model)
+                entry["theta_mean_abs_gradient_by_layer"] = summarize_theta_gradients(grad_stats)
+            else:
+                entry["temperatures"] = temps
+                entry["taus"] = {k.replace("temperature", "tau"): (1.0 / v if isinstance(v, float) and v else None) for k, v in temps.items()}
             if cont_bit is not None:
                 entry["continuous_bit_accuracy"] = cont_bit
                 entry["continuous_exact_accuracy"] = cont_exact
@@ -907,11 +998,17 @@ def run_single(
                 "bias_mean": float(b.mean().item()),
                 "bias_dist_to_binary": float(torch.minimum(b, 1.0 - b).mean().item()),
             }
+            if hasattr(layer, "theta"):
+                parameter_stats[f"layer_{i}"].update({
+                    "theta": _distribution_summary(layer.theta),
+                    "r": _distribution_summary(layer.raw_strength()),
+                    "g": _distribution_summary(layer.effective_gate()),
+                })
     circuit_stats = compute_circuit_stats(discrete_model)
 
     runtime_seconds = time.time() - t_start
     resolved_model_cfg = dict(model_cfg)
-    if model_cfg.get("architecture") == "modern":
+    if model_cfg.get("architecture") in {"modern", "modern_temperature_free"}:
         width = int(model_cfg.get("width", 64))
         resolved_model_cfg["layer_dims"] = [width] * (1 + 2 * int(model_cfg.get("num_residual_blocks", 2))) + [task["output_dim"]]
         resolved_model_cfg["residual_positions"] = list(range(int(model_cfg.get("num_residual_blocks", 2)))) if model_cfg.get("residual_enabled", True) else []
@@ -986,6 +1083,11 @@ def run_single(
         "train_ratio": _train_ratio,
         "discretization_threshold": discretization_threshold,
     }
+    if model_cfg.get("architecture") == "modern_temperature_free":
+        metrics["temperature_free_parameter_stats"] = compute_temperature_free_parameter_stats(unwrapped)
+        metrics["theta_mean_abs_gradient_by_layer"] = summarize_theta_gradients(
+            history[-1].grad_stats if history else {})
+        metrics["temperature_mechanism"] = "none"
     return metrics
 
 

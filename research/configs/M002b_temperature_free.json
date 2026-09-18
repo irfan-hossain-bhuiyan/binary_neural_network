@@ -1,0 +1,45 @@
+{
+  "experiment_id": "M002b-temperature-free-self-sharpening",
+  "parent_experiment": "M001-R",
+  "description": "Temperature-free modern XOR residual network; softmax sharpening is coupled to positive edge strength r.",
+  "discretization_threshold": 0.5,
+  "checkpoint_output": "artifacts/checkpoints/M002b_seed0.pt",
+  "task": {
+    "task": "bitwise_xor_truth_table",
+    "params": {
+      "bits": 4
+    },
+    "seed": 0
+  },
+  "model": {
+    "architecture": "modern_temperature_free",
+    "width": 64,
+    "num_residual_blocks": 2,
+    "residual_enabled": true,
+    "use_softmax": true,
+    "grad_scalar": true,
+    "bias_init": {
+      "type": "normal",
+      "mean": 1.0
+    },
+    "gate_initializations": [
+      0.75,
+      0.25,
+      0.75,
+      0.25,
+      0.75,
+      0.25
+    ]
+  },
+  "training": {
+    "min_epochs": 300,
+    "max_epochs": 2000,
+    "check_every": 25,
+    "batch_size": 256,
+    "optimizer": "Adam",
+    "lr": 0.01,
+    "loss": "MSELoss",
+    "regularizer": null,
+    "constraints": []
+  }
+}
