@@ -1,0 +1,80 @@
+{
+  "experiment_id": "M002-fixed-temperature",
+  "parent_experiment": "M001-R",
+  "description": "Residual modern XOR truth-table experiment with temperature fixed at 1; no learned temperature or tau penalty.",
+  "discretization_threshold": 0.5,
+  "checkpoint_output": "artifacts/checkpoints/M002_seed0.pt",
+  "task": {
+    "task": "bitwise_xor_truth_table",
+    "params": {
+      "bits": 4
+    },
+    "seed": 0
+  },
+  "model": {
+    "architecture": "modern",
+    "width": 64,
+    "num_residual_blocks": 2,
+    "residual_enabled": true,
+    "init_temperature": 1.0,
+    "learnable_tau": false,
+    "use_softmax": true,
+    "grad_scalar": true,
+    "layer_initializers": [
+      {
+        "type": "normal",
+        "mean": 1.0
+      },
+      {
+        "type": "normal",
+        "mean": 0.0
+      },
+      {
+        "type": "normal",
+        "mean": 1.0
+      },
+      {
+        "type": "normal",
+        "mean": 0.0
+      },
+      {
+        "type": "normal",
+        "mean": 1.0
+      },
+      {
+        "type": "normal",
+        "mean": 0.0
+      }
+    ],
+    "bias_init": {
+      "type": "normal",
+      "mean": 1.0
+    }
+  },
+  "training": {
+    "min_epochs": 300,
+    "max_epochs": 2000,
+    "check_every": 25,
+    "batch_size": 256,
+    "optimizer": "Adam",
+    "lr": 0.01,
+    "loss": "MSELoss",
+    "regularizer": {
+      "type": "regularization_factory2",
+      "disc_lambda": 0.5,
+      "tau_lambda": 0.0,
+      "patience": 15,
+      "min_err": 0.01,
+      "isolate_on_plateau": true
+    },
+    "constraints": [
+      "clamp_weights_bias_temperature",
+      {
+        "type": "noise_on_plateau",
+        "std": 0.3,
+        "patience": 15,
+        "min_delta": 0.01
+      }
+    ]
+  }
+}
