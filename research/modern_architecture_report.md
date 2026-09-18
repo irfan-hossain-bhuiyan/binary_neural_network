@@ -293,3 +293,48 @@ The next run is M001-NR: same layers, initialization, optimizer, training
 budget, exact truth table, and seed, with residual XOR disabled as the only
 change. Temperature and regularization experiments remain queued until this
 control is recorded.
+
+
+## M001-NR: matched no-residual control
+
+M001-NR uses the exact M001-R truth table and six logic layers. Its only model
+change is disabling both residual XOR operations. The run used seed 0, 2000
+epochs, Tesla T4 (70.05 s), Kaggle v14; packaged and returned SHA matched
+`feb9db19e6bf4be4ae73699f5bca183c78683d5a`.
+
+| Final inference | Residual bit / exact | No-residual bit / exact |
+|---|---:|---:|
+| Continuous soft | 0.86816 / 0.58594 | 0.81738 / 0.37891 |
+| Continuous hard-max | 0.64746 / 0.16406 | 0.69336 / 0.17969 |
+| Thresholded Boolean | 0.64746 / 0.16797 | 0.60840 / 0.11719 |
+
+No model recovers the complete truth table. The control reached 0.90625
+continuous exact accuracy at epoch 900, then finished at 0.37891. Its best
+ready Boolean checkpoint reached 0.31250 exact at epoch 550; the residual
+model's best ready Boolean checkpoint reached 0.18359 at epoch 1975. Yet at
+the final checkpoint, the residual model is higher on soft and Boolean exact
+accuracy. This checkpoint sensitivity and disagreement make the one-seed
+comparison mixed.
+
+Parameter binarization first passed the operational threshold at epoch 548 in
+M001-NR, versus 175 in M001-R. Final M001-NR D_w=0.008991 and D_b=0.002193;
+its circuit has 4,259 selected edges of 17,152 possible (24.83%). M001-R has
+4,088 (23.83%). Neither selected-edge count corresponds to successful
+function recovery.
+
+![M001-R and M001-NR truth-table exact-accuracy trajectories](figures/m001_truth_table_residual_control.png)
+
+The residual model's direct signed XOR gain means are -0.8073/-0.7183, with
+absolute means 0.9561/0.8827. Backward activation-gradient norm transfer
+`||grad_input||/||grad_output||` is 3.984/0.535. In M001-NR, skip operations
+are absent, so direct XOR skip gain is not an active path; the measured
+branch-like diagnostic proxy has signed means -0.8840/-0.8593, while activation
+gradient norm transfer is 1.194/1.472. The named first/last parameter-gradient
+ratio is 8.264 for M001-R and 0.926 for M001-NR. These final-batch summaries
+are descriptive and do not explain the trajectory or establish causality.
+
+The controlled result does not show a consistent residual advantage: residuals
+win at final metrics, while no-residual wins at best observed checkpoints.
+Continue with the isolated M002 temperature-policy test on the residual
+architecture before deciding whether to spend on larger tasks. Full trajectories
+and diagnostics are retained in the two archived JSON files.

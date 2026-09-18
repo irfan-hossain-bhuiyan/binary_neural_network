@@ -40,7 +40,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 |---|---|---|---|---|---|---|
 | M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
 | M001-R | `6a33da88923b466e6498ef940d46b02742fc82e2` | Evaluate exact full-table recovery with residual topology | exact 256-row table | stem64 + 2 residual blocks + head | 0 | 2000 epochs; function recovery false; soft/hard/Boolean exact 0.5859/0.1641/0.1680; T4 62.0s |
-| M001-NR | pending | Matched same-depth graph without residual XOR | same exact 256-row table | same modern layers, residual disabled | 0 | next; pending commit/run |
+| M001-NR | `feb9db19e6bf4be4ae73699f5bca183c78683d5a` | Matched same-depth graph without residual XOR | exact 256-row table | same modern layers, residual disabled | 0 | 2000 epochs; function recovery false; final soft/hard/Boolean exact 0.3789/0.1797/0.1172; T4 70.1s |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -533,3 +533,108 @@ On exactly the same truth table and training setup, does disabling only the XOR
 residual operation materially change learning, polarization, gradients, or
 Boolean function recovery? Run M001-NR before changing temperature or
 regularization.
+
+
+## M001-NR — Matched same-depth control without residual XOR
+
+### Parent experiment
+
+M001-R, exact 256-row 4-bit XOR truth table, seed 0.
+
+### Hypothesis
+
+Test whether the XOR residual itself changes task learning, parameter
+binarization, gradient flow, or Boolean truth-table recovery when the deep
+logic-layer topology and training recipe are held fixed.
+
+### Single changed variable
+
+`residual_enabled=false`. The six logic layers, widths, initializer values,
+optimizer, loss, regularization, temperature policy, plateau noise, data, seed,
+and 2000-epoch budget match M001-R. No historical shallow model is used.
+
+### Architecture
+
+Same 8→64 stem, four 64→64 internal logic layers, and 64→4 head. The two
+width-preserving two-layer groups execute without their XOR skip operation.
+There are 17,152 possible logic edges, exactly as in M001-R.
+
+### Dataset
+
+All 256 rows of 4-bit operand XOR, with no held-out rows. This measures exact
+function recovery only.
+
+### Training configuration
+
+Seed 0; 2000 epochs; Adam 0.01; MSE; batch 256; learnable temperatures
+initialized to 1; `regularization_factory2` with `disc_lambda=0.5`,
+`tau_lambda=0.3`; plateau Gaussian noise std 0.3. Tesla T4, 70.05 seconds,
+Kaggle kernel v14. Packaged and returned SHA verified as
+`feb9db19e6bf4be4ae73699f5bca183c78683d5a`. Artifacts:
+`kaggle/results/feb9db1_M001-NR_seed0.json` and
+`kaggle/results/feb9db1_M001-NR_seed0.pt`.
+
+### Metrics
+
+| Inference | M001-R bit / exact | M001-NR bit / exact |
+|---|---:|---:|
+| Continuous soft, final epoch | 0.86816 / 0.58594 | 0.81738 / 0.37891 |
+| Continuous hard-max, final epoch | 0.64746 / 0.16406 | 0.69336 / 0.17969 |
+| Boolean threshold, final epoch | 0.64746 / 0.16797 | 0.60840 / 0.11719 |
+| Best Boolean among binarized checkpoints, exact | 0.18359 (epoch 1975) | 0.31250 (epoch 550) |
+
+Neither model exactly recovers the function. M001-NR's best continuous exact
+accuracy is 0.90625 at epoch 900, compared with M001-R's 0.61719 at epoch
+1725. However, M001-NR ends at 0.37891 continuous exact accuracy, so its
+trajectory is strongly non-monotonic and final-epoch ranking hides its earlier
+peak. Its first operational parameter-binarized checkpoint is epoch 548
+(M001-R: epoch 175). Final M001-NR D_w=0.008991, D_b=0.002193,
+w_corner_05=0.96379, b_corner_05=0.99166. Final Boolean circuit selects
+4,259/17,152 edges (24.83%), compared with M001-R's 4,088/17,152 (23.83%).
+
+![Full-table exact accuracy trajectories for the residual model and matched control](figures/m001_truth_table_residual_control.png)
+
+### Residual and gradient behavior
+
+M001-R direct signed XOR gain means were -0.8073 and -0.7183; mean absolute
+gains were 0.9561 and 0.8827. The branch mask-one/output-flip fractions were
+0.9005 and 0.8698. Backprop `||grad_input||/||grad_output||` was 3.984 and
+0.535 (mean-absolute transfer 5.556 and 0.886).
+
+In M001-NR the residual operation is disabled, so XOR skip-gain values are not
+active gradient paths and are not comparable as skip-gradient measurements.
+The internal branch-like F diagnostic had signed direct-gain proxy means
+-0.8840/-0.8593, absolute means 0.9424/0.9220, and mask-one fractions
+0.9368/0.9471. Actual backprop gradient transfer across the corresponding
+activation groups was 1.194/1.472 by L2 norm and 1.736/1.946 by mean absolute
+gradient. First/last named logic-layer parameter gradient ratio was 0.926 in
+M001-NR versus 8.264 in M001-R; the generic layer-order summary is also
+recorded in JSON and uses a different layer mapping. These single-batch
+measurements should not be collapsed into a claim that one topology has better
+gradients.
+
+### Result
+
+The matched seed-0 comparison is mixed. Residuals have better final continuous
+and final Boolean accuracy, while the no-residual control achieves a much
+higher best continuous peak and best ready-checkpoint Boolean peak. Both
+trajectories finish far from exact function recovery and show substantial
+checkpoint dependence. One seed therefore does not support a robust claim
+that residuals improve XOR learning. Because the exact task has not been
+recovered, the immediate interpretation is to examine the training dynamics
+and temperature intervention next, rather than attribute a stable benefit to
+the residual.
+
+### What this does NOT prove
+
+It does not establish that either topology is generally better, that the
+no-residual peak is reproducible, or that gradient differences cause the
+accuracy trajectories. It does not measure held-out generalization: all rows
+were used for training and evaluation.
+
+### Next question
+
+With topology comparisons complete at the initial recipe, does fixing
+temperature at 1 and removing temperature dynamics improve the stability and
+Boolean recovery of the residual modern architecture while retaining the
+weight/bias regularizer? Proceed to M002 as one temperature-policy change.
