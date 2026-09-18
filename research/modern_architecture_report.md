@@ -407,3 +407,21 @@ The planned phase stops here. We did not run M004, P001, MNIST D001, or P004;
 the exhaustive XOR task has not been recovered, and the human should choose
 whether the next single hypothesis isolates plateau noise or tests a new OR
 semantics.
+
+
+## Interpretation correction: M002 and M003 are fixed-T experiments
+
+The earlier description of M002 as “removing temperature dynamics” was
+incorrect. The existing operator computes `softmax(tau*z)` with
+`tau=1/T`; its Boolean/max limit is `T→0+` (or `tau→+∞`). M002 fixed the old
+softmax at T=1, which remains smoothed. Preserve its numerical results as a
+negative control for fixed T=1. M003 inherits that branch and likewise does
+not test a temperature-free architecture.
+
+The intended temperature-free operator is separately defined as
+`r=softplus(theta)`, `g=tanh(r)`,
+`S(a,r)=<softmax(a*r), a*tanh(r)>`. M002b tests whether this same positive
+edge strength can jointly select edges and sharpen the softmax, without a
+separate temperature. The existing regularizer is omitted because its bounded
+weight/tau penalties do not apply; this also removes its coupled bias penalty
+and is an acknowledged experimental consequence.

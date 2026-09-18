@@ -41,8 +41,8 @@ experiment bookkeeping thresholds, not established scientific constants.
 | M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
 | M001-R | `6a33da88923b466e6498ef940d46b02742fc82e2` | Evaluate exact full-table recovery with residual topology | exact 256-row table | stem64 + 2 residual blocks + head | 0 | 2000 epochs; function recovery false; soft/hard/Boolean exact 0.5859/0.1641/0.1680; T4 62.0s |
 | M001-NR | `feb9db19e6bf4be4ae73699f5bca183c78683d5a` | Matched same-depth graph without residual XOR | exact 256-row table | same modern layers, residual disabled | 0 | 2000 epochs; function recovery false; final soft/hard/Boolean exact 0.3789/0.1797/0.1172; T4 70.1s |
-| M002 | `f8e998fdb4948d48f7f24122de2534874e83116a` | Test whether learned temperature dynamics are needed | exact 256-row table | modern residual, tau fixed at 1 | 0 | 2000 epochs; polarized but near-chance exact accuracy 0.0898/0.0625/0.0625; T4 55.6s |
-| M003 | `62f17059b1dc66094f1cb4e633ccc1d6585c6218` | Test task optimization without explicit weight/bias regularization | exact 256-row table | modern residual, fixed temperature, no regularizer | 0 | 2000 epochs; best soft exact 0.3164; final parameters not binarized; Boolean diagnostic exact 0.0625; T4 50.3s |
+| M002 | `f8e998fdb4948d48f7f24122de2534874e83116a` | Measure the fixed-T=1 policy as a negative control (not temperature-free) | exact 256-row table | modern residual, T fixed at 1 | 0 | 2000 epochs; polarized but near-chance exact accuracy 0.0898/0.0625/0.0625; T4 55.6s |
+| M003 | `62f17059b1dc66094f1cb4e633ccc1d6585c6218` | Test task optimization without explicit regularization on the fixed-T=1 branch | exact 256-row table | modern residual, T fixed at 1, no regularizer | 0 | 2000 epochs; best soft exact 0.3164; final parameters not binarized; Boolean diagnostic exact 0.0625; T4 50.3s |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -281,8 +281,8 @@ context only.
 |---|---|---|---|---|
 | M001-R | sampled M001 | Exact truth-table recovery with XOR residuals | all 256 rows, 4-bit XOR | next |
 | M001-NR | M001-R matched setup | Disable only residual XOR operations in same-depth graph | same 256 rows | pending matched run |
-| M002 | M001-R | Fixed temperature 1.0; no temperature dynamics; tau penalty 0 | same 256 rows | pending |
-| M003 | M002 | Remove explicit regularization only | same 256 rows | pending |
+| M002 | M001-R | Fixed T=1 negative control; not temperature-free | same 256 rows | completed; poor task performance, see result above |
+| M003 | M002 | Remove explicit regularization on fixed-T=1 branch | same 256 rows | completed; soft exact peak 0.3164, see result above |
 | M004 | M003 | Remove plateau noise only | same 256 rows | pending |
 | P001 | saved XOR checkpoint | Independent Bernoulli parameter sampling, no retraining | 256-row XOR table | pending; checkpoint required |
 | D001 | selected successful M002–M004 setup | Modern binary-image classification | binarized MNIST | later, after XOR protocol |
@@ -642,18 +642,19 @@ Boolean recovery of the residual modern architecture while retaining the
 weight/bias regularizer? Proceed to M002 as one temperature-policy change.
 
 
-## M002 — Fixed temperature, no temperature dynamics
+## M002 — Fixed T=1 negative control (not temperature-free)
 
 ### Parent experiment
 
 M001-R, modern residual architecture trained on the exact 256-row 4-bit XOR
 table.
 
-### Hypothesis
+### Original hypothesis (later corrected)
 
-Test whether the residual architecture can learn without per-layer learned
-temperature sharpening, while retaining weight/bias discretization
-regularization and the existing OR surrogate.
+The original entry framed fixed temperature as removing temperature dynamics.
+That was not the intended hypothesis: T=1 retains the softmax smoothing and is
+not the Boolean/max limit. The result remains valid only as a negative control
+for the particular fixed-T=1 setting.
 
 ### Single changed variable
 
@@ -708,12 +709,12 @@ to learn.
 
 ### Result
 
-Fixed temperature at 1 with the weight/bias regularizer sharply reduced task
-performance relative to M001-R. This is evidence that the temperature
-dynamics in the parent recipe may be important under this setup, but the
-comparison is one seed and does not isolate every interaction with training
-trajectory. Parameter binarization alone again fails to imply function
-recovery. The trajectory is plotted with the two M001 truth-table runs.
+Fixed T=1 with the weight/bias regularizer sharply reduced task performance
+relative to M001-R. This is only evidence about the fixed-T=1 setting. It does
+not show whether a temperature-free operator can self-sharpen, or whether
+learned temperature dynamics are necessary. Parameter binarization alone again
+fails to imply function recovery. The trajectory is plotted with the M001
+truth-table runs.
 
 ![Exact accuracy trajectories for M001-R, M001-NR, and fixed-temperature M002](figures/m001_truth_table_residual_control.png)
 
@@ -825,3 +826,26 @@ Before running it, decide whether to continue the current OR surrogate as
 planned or prioritize a separately controlled probability-consistent OR
 hypothesis. No M004, stochastic-sampling, or MNIST experiment was run in this
 phase.
+
+
+## Correction: M002 did not test the intended temperature-free architecture
+
+The intended proposal was not T=1. In the previous layer,
+`softmax(tau*z)` uses `tau=1/T`; the Boolean/max limit is `T→0+`
+(equivalently `tau→+∞`). Fixing T=1 preserves a smoothed softmax.
+
+The intended proposal removes the separate temperature and instead uses
+positive edge strength `r=softplus(theta)`, gate `g=tanh(r)`, and
+`S(a,r)=<softmax(a⊙r), a⊙tanh(r)>`. The same edge parameter controls both
+selection strength and softmax sharpening.
+
+M002 remains archived as a fixed-T=1 negative control. M003 inherits that
+fixed-T branch and is not evidence about the temperature-free operator. Their
+recorded metrics are unchanged. The earlier wording about testing whether
+“temperature dynamics are needed” is superseded by this correction.
+
+M002b is a distinct experiment parented directly to M001-R. It uses task loss
+only and no plateau perturbation. Because the existing regularizer jointly
+penalizes bounded weights, polarity biases and tau, it cannot be applied to
+unbounded `r`; omitting it also removes its bias penalty. This is recorded as
+an implementation consequence. No replacement r or bias regularizer is added.
