@@ -370,3 +370,40 @@ The result suggests the learned temperature policy matters under this recipe,
 but a single seed cannot establish a general necessity. M003 will hold the
 temperature fixed and remove only explicit weight/bias discretization
 regularization.
+
+
+## M003: no explicit discretization regularization
+
+M003 changes only the regularization loss from M002 to none. Temperature stays
+fixed at 1; plateau noise and all other settings remain. Seed 0, 2000 epochs,
+Tesla T4 (50.25 s), Kaggle v16; exact package SHA verified:
+`62f17059b1dc66094f1cb4e633ccc1d6585c6218`.
+
+| Inference | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous soft | 0.70605 | 0.21484 |
+| Continuous hard-max | 0.50000 | 0.06250 |
+| Thresholded Boolean, diagnostic only | 0.50000 | 0.06250 |
+
+The best soft exact accuracy was 0.31641 at epoch 1325. The final task loss
+was 0.23733; regularization loss was zero. Final D_w=0.003329, but
+D_b=0.05030 and b_corner_05=0.82579, so `PARAMETER_BINARIZED` was never met.
+The Boolean score remains diagnostic only. Parameter entropy means were
+0.00984 for weights and 0.14244 for biases. The thresholded diagnostic
+circuit selected 4,588 of 17,152 possible edges.
+
+Residual branch direct-gain means were +0.96345/+0.86606 (absolute
++0.96345/+0.89734), with flip fractions 0/0.03125. Backprop gradient transfer
+was 4.033/1.503 by L2 norm and 3.677/1.425 by mean absolute gradient.
+
+M003 outperforms M002 modestly in continuous task metrics, but all exact
+Boolean outputs remain near chance and no full truth-table recovery occurred.
+Across the experiments the current soft aggregation often scores far above
+hard-max/Boolean inference, making OR semantics a leading question for the
+next design decision. No claim is made that a new OR surrogate will solve the
+problem.
+
+The planned phase stops here. We did not run M004, P001, MNIST D001, or P004;
+the exhaustive XOR task has not been recovered, and the human should choose
+whether the next single hypothesis isolates plateau noise or tests a new OR
+semantics.

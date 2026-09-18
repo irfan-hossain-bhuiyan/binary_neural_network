@@ -42,6 +42,7 @@ experiment bookkeeping thresholds, not established scientific constants.
 | M001-R | `6a33da88923b466e6498ef940d46b02742fc82e2` | Evaluate exact full-table recovery with residual topology | exact 256-row table | stem64 + 2 residual blocks + head | 0 | 2000 epochs; function recovery false; soft/hard/Boolean exact 0.5859/0.1641/0.1680; T4 62.0s |
 | M001-NR | `feb9db19e6bf4be4ae73699f5bca183c78683d5a` | Matched same-depth graph without residual XOR | exact 256-row table | same modern layers, residual disabled | 0 | 2000 epochs; function recovery false; final soft/hard/Boolean exact 0.3789/0.1797/0.1172; T4 70.1s |
 | M002 | `f8e998fdb4948d48f7f24122de2534874e83116a` | Test whether learned temperature dynamics are needed | exact 256-row table | modern residual, tau fixed at 1 | 0 | 2000 epochs; polarized but near-chance exact accuracy 0.0898/0.0625/0.0625; T4 55.6s |
+| M003 | `62f17059b1dc66094f1cb4e633ccc1d6585c6218` | Test task optimization without explicit weight/bias regularization | exact 256-row table | modern residual, fixed temperature, no regularizer | 0 | 2000 epochs; best soft exact 0.3164; final parameters not binarized; Boolean diagnostic exact 0.0625; T4 50.3s |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -727,3 +728,100 @@ other temperature values. The tested value was exactly 1.0, as specified.
 Holding temperature fixed at 1, does task optimization without explicit
 weight/bias discretization regularization recover useful continuous or
 Boolean performance? M003 changes only the regularization loss.
+
+
+## M003 — No explicit weight/bias discretization regularization
+
+### Parent experiment
+
+M002, modern residual architecture with temperature fixed at 1.0 on the exact
+4-bit XOR truth table.
+
+### Hypothesis
+
+Task optimization alone may learn a useful continuous solution without the
+explicit weight/bias regularizer, while retaining the same task, topology, and
+fixed temperature.
+
+### Single changed variable
+
+The regularization loss changed from `regularization_factory2` to `None`. Fixed
+temperature 1.0, `learnable_tau=false`, optimizer, learning rate, data,
+initialization, architecture, 2000-epoch budget and plateau-noise constraint
+remain unchanged. The task loss is therefore the entire scalar training loss.
+
+### Architecture
+
+Modern width-64 stem, two width-64 two-layer XOR residual blocks, and 4-bit
+head.
+
+### Dataset
+
+All 256 rows of 4-bit XOR, no held-out rows.
+
+### Training configuration
+
+Seed 0; Adam 0.01; MSE; batch 256; fixed temperature 1; no regularizer;
+plateau-noise constraint std 0.3; 2000 epochs. Tesla T4 runtime 50.25 s,
+Kaggle kernel v16. Package and returned SHA verified:
+`62f17059b1dc66094f1cb4e633ccc1d6585c6218`. Result and checkpoint:
+`kaggle/results/62f1705_M003-no-explicit-regularizer_seed0.json` and
+`kaggle/results/62f1705_M003_seed0.pt`.
+
+### Metrics
+
+| Final inference on all 256 rows | Bit accuracy | Exact accuracy |
+|---|---:|---:|
+| Continuous soft | 0.70605 | 0.21484 |
+| Continuous hard-max | 0.50000 | 0.06250 |
+| Thresholded Boolean (diagnostic only) | 0.50000 | 0.06250 |
+
+The best continuous exact accuracy is 0.31641 (bit 0.75684) at epoch 1325;
+final exact accuracy is 0.21484. `function_exact_recovery=false`. At epoch 0,
+D_w=0.08629 and D_b=0.08571. At epoch 2000, D_w=0.003329 but D_b=0.05030,
+w_corner_05=0.98729 and b_corner_05=0.82579. `PARAMETER_BINARIZED` never
+passed the operational threshold, so the thresholded result is diagnostic
+only and is not counted as a meaningful discretization failure. Final mean
+weight/bias entropy is 0.00984/0.14244. The thresholded diagnostic circuit
+selects 4,588 of 17,152 edges (26.75%).
+
+The epoch-0 and final task losses were 0.34854 and 0.23733, with regularization
+loss identically zero. This is task optimization progress, but not function
+recovery.
+
+### Residual-block behavior
+
+Final branch signed direct-gain means are +0.96345 and +0.86606 (mean absolute
+gain +0.96345/+0.89734). Mask-one/output-flip fractions are 0 and 0.03125.
+Most branch outputs are near zero and act like an identity skip at the final
+point. Backprop transfer `||grad_input||/||grad_output||` is 4.033/1.503 by L2
+norm and 3.677/1.425 by mean absolute gradient. The first/last parameter
+gradient ratio is 3.112.
+
+### Result
+
+Removing explicit regularization while holding temperature fixed modestly
+improves task performance over M002, but the model still does not recover
+XOR. Weights become close to Boolean while biases remain too fractional for
+the readiness definition. Soft aggregation materially exceeds hard-max and
+Boolean results. This is consistent with a semantic mismatch in the current
+soft OR surrogate, but does not prove that changing the OR is the right next
+intervention.
+
+![M001-R, M001-NR, M002 and M003 exact-accuracy trajectories](figures/m001_truth_table_residual_control.png)
+
+### What this does NOT prove
+
+It does not prove that fractional biases are useful stochastic probabilities,
+that an alternative OR will solve the task, or that fixed temperature with no
+regularizer cannot recover XOR under another seed or longer training. The
+thresholded Boolean score is not a scientifically ready discretization result.
+
+### Next question
+
+Does removing plateau noise, with fixed temperature and no explicit
+regularization, change task-learning stability or bias polarization (M004)?
+Before running it, decide whether to continue the current OR surrogate as
+planned or prioritize a separately controlled probability-consistent OR
+hypothesis. No M004, stochastic-sampling, or MNIST experiment was run in this
+phase.
