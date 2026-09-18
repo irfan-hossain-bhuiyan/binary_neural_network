@@ -255,10 +255,14 @@ def compute_residual_diagnostics(model: nn.Module, X: torch.Tensor, Y: torch.Ten
     result = {}
     for i, values in captured.items():
         merged = {k: torch.cat(v, dim=0) for k, v in values.items()}
-        gain = (1 - 2 * merged["h2"]).abs().reshape(-1)
+        signed_gain = (1 - 2 * merged["h2"]).reshape(-1)
+        gain = signed_gain.abs()
         sorted_gain = gain.sort().values
+        sorted_signed = signed_gain.sort().values
         def q(p: float) -> float:
             return float(sorted_gain[min(int(p * (len(sorted_gain)-1)), len(sorted_gain)-1)].item())
+        def sq(p: float) -> float:
+            return float(sorted_signed[min(int(p * (len(sorted_signed)-1)), len(sorted_signed)-1)].item())
         hard_x = merged["input"] >= 0.5
         hard_f = merged["h2"] >= 0.5
         hard_y = merged["output"] >= 0.5
@@ -270,7 +274,21 @@ def compute_residual_diagnostics(model: nn.Module, X: torch.Tensor, Y: torch.Ten
                             "fraction_lt_0_25": (gain < 0.25).float().mean().item(),
                             "fraction_gt_0_75": (gain > 0.75).float().mean().item(),
                             "fraction_gt_0_9": (gain > 0.9).float().mean().item()},
+            "direct_gradient": {"mean": signed_gain.mean().item(), "median": sq(0.5),
+                                "p10": sq(0.1), "p25": sq(0.25), "p75": sq(0.75),
+                                "p90": sq(0.9),
+                                "fraction_positive": (signed_gain > 0).float().mean().item(),
+                                "fraction_negative": (signed_gain < 0).float().mean().item(),
+                                "abs_mean": gain.mean().item(), "abs_median": q(0.5),
+                                "abs_p10": q(0.1), "abs_p25": q(0.25),
+                                "abs_p75": q(0.75), "abs_p90": q(0.9),
+                                "fraction_abs_lt_0_1": (gain < 0.1).float().mean().item(),
+                                "fraction_abs_lt_0_25": (gain < 0.25).float().mean().item(),
+                                "fraction_abs_gt_0_75": (gain > 0.75).float().mean().item(),
+                                "fraction_abs_gt_0_9": (gain > 0.9).float().mean().item()},
             "xor_flip_fraction": hard_f.float().mean().item(),
+            "mask_one_fraction": hard_f.float().mean().item(),
+            "mask_zero_fraction": (~hard_f).float().mean().item(),
             "output_differs_from_input_fraction": (hard_x ^ hard_y).float().mean().item(),
         }
 
@@ -302,6 +320,12 @@ def compute_residual_diagnostics(model: nn.Module, X: torch.Tensor, Y: torch.Ten
             vals[side] = {"mean_abs_grad": float(g.abs().mean().item()),
                           "gradient_norm": float(g.norm().item())} if g is not None else None
         result[f"block_{i}"]["actual_activation_gradients"] = vals
+        gi, go = vals.get("input"), vals.get("output")
+        result[f"block_{i}"]["backward_gradient_transfer"] = (
+            {"l2_grad_input_over_output": gi["gradient_norm"] / (go["gradient_norm"] + 1e-12),
+             "mean_abs_grad_input_over_output": gi["mean_abs_grad"] / (go["mean_abs_grad"] + 1e-12)}
+            if gi is not None and go is not None else None
+        )
     return result
 
 
@@ -363,9 +387,17 @@ def compute_polarization_stats(model: nn.Module) -> dict:
     with torch.no_grad():
         w_all = []
         b_all = []
-        for layer in getattr(model, "expectation_layers"):
-            w_all.append(layer.actual_weight().detach().float().cpu().reshape(-1))
-            b_all.append(layer.actual_bias().detach().float().cpu().reshape(-1))
+        entropy_by_layer = {}
+        for i, layer in enumerate(getattr(model, "expectation_layers")):
+            w_layer = layer.actual_weight().detach().float().cpu().reshape(-1)
+            b_layer = layer.actual_bias().detach().float().cpu().reshape(-1)
+            w_all.append(w_layer)
+            b_all.append(b_layer)
+            def entropy(p):
+                p = p.clamp(1e-7, 1.0 - 1e-7)
+                h = -(p * p.log2() + (1.0 - p) * (1.0 - p).log2())
+                return {"mean": float(h.mean().item()), "median": float(h.median().item())}
+            entropy_by_layer[f"layer_{i}"] = {"weight": entropy(w_layer), "bias": entropy(b_layer)}
         if not w_all:
             return {}
         w = torch.cat(w_all)
@@ -384,6 +416,8 @@ def compute_polarization_stats(model: nn.Module) -> dict:
         b_s = corner_stats(b)
         combined = torch.cat([w, b])
         c_s = corner_stats(combined)
+        w_entropy = entropy(w)
+        b_entropy = entropy(b)
         return {
             "D_w": w_s["D"],
             "D_b": b_s["D"],
@@ -399,7 +433,26 @@ def compute_polarization_stats(model: nn.Module) -> dict:
             "combined_corner_01": c_s["corner_01"],
             "combined_corner_05": c_s["corner_05"],
             "combined_corner_10": c_s["corner_10"],
+            "parameter_entropy_by_layer": entropy_by_layer,
+            "weight_entropy_mean": w_entropy["mean"],
+            "weight_entropy_median": w_entropy["median"],
+            "bias_entropy_mean": b_entropy["mean"],
+            "bias_entropy_median": b_entropy["median"],
         }
+
+
+def parameter_binarized(polarization: dict) -> bool:
+    """Operational parameter-corner predicate; this is not task success."""
+    return bool(
+        polarization.get("D_w", float("inf")) <= 0.01
+        and polarization.get("D_b", float("inf")) <= 0.01
+        and polarization.get("w_corner_05", 0.0) >= 0.95
+        and polarization.get("b_corner_05", 0.0) >= 0.95
+    )
+
+
+def _cpu_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
+    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
 
 def get_temperatures(model: nn.Module) -> dict:
@@ -533,6 +586,7 @@ def run_single(
     seed: int,
     discretization_threshold: float = 0.5,
     git_commit: str | None = None,
+    checkpoint_output: str | Path | None = None,
 ) -> dict:
     """Train one (task, seed) configuration; return machine-readable metrics."""
     t_start = time.time()
@@ -622,15 +676,21 @@ def run_single(
                 pol0.get("D_b", float("inf")) <= 0.01 and
                 pol0.get("w_corner_05", 0.0) >= 0.95 and
                 pol0.get("b_corner_05", 0.0) >= 0.95),
-            "diagnostic_discrete_status": "ready_evaluation" if (
+            "diagnostic_discrete_status": "parameter_binarized" if (
                 pol0.get("D_w", float("inf")) <= 0.01 and
                 pol0.get("D_b", float("inf")) <= 0.01 and
                 pol0.get("w_corner_05", 0.0) >= 0.95 and
                 pol0.get("b_corner_05", 0.0) >= 0.95) else "diagnostic_only",
         }
+        initial_state["parameter_binarized"] = parameter_binarized(pol0)
 
     # Per-epoch trajectory (instrumentation, no grad).
     trajectory: list[dict] = []
+    best_checkpoints: dict[str, dict | None] = {
+        "best_continuous_task": None,
+        "best_parameter_binarized": None,
+        "best_discrete_task": None,
+    }
     discrete_eval_epochs = {1, 5, 10, 20, 50, 100, 150, 200, 250, 300, epochs}
     discrete_eval_epochs.update(range(check_every, epochs + 1, check_every))
     # Also include final epoch always.
@@ -644,10 +704,7 @@ def run_single(
         model = state["model"]
         with torch.no_grad():
             pol = compute_polarization_stats(model)
-            ready = bool(pol.get("D_w", float("inf")) <= 0.01 and
-                         pol.get("D_b", float("inf")) <= 0.01 and
-                         pol.get("w_corner_05", 0.0) >= 0.95 and
-                         pol.get("b_corner_05", 0.0) >= 0.95)
+            ready = parameter_binarized(pol)
             temps = get_temperatures(model)
             # gradient ratio from grad_stats
             summary = summarize_gradients(grad_stats)
@@ -670,6 +727,27 @@ def run_single(
                                              device=device, sample_wise_comparison=False)
                 hard_exact = evaluate_accuracy(hard_model, eval_set, threshold=0.5,
                                                device=device, sample_wise_comparison=True)
+                continuous_score = (cont_exact, cont_bit)
+                previous = best_checkpoints["best_continuous_task"]
+                if previous is None or continuous_score > previous["score"]:
+                    base_model = getattr(model, "module", model)
+                    best_checkpoints["best_continuous_task"] = {
+                        "epoch": epoch, "score": continuous_score,
+                        "continuous_exact_accuracy": cont_exact,
+                        "continuous_bit_accuracy": cont_bit,
+                        "state_dict": _cpu_state_dict(base_model),
+                    }
+                if ready:
+                    previous = best_checkpoints["best_parameter_binarized"]
+                    if previous is None or continuous_score > previous["score"]:
+                        base_model = getattr(model, "module", model)
+                        best_checkpoints["best_parameter_binarized"] = {
+                            "epoch": epoch, "score": continuous_score,
+                            "continuous_exact_accuracy": cont_exact,
+                            "continuous_bit_accuracy": cont_bit,
+                            "polarization": pol,
+                            "state_dict": _cpu_state_dict(base_model),
+                        }
             # discrete clone evaluation (never mutate training model)
             disc_bit = disc_exact = None
             if epoch in discrete_eval_epochs:
@@ -691,6 +769,17 @@ def run_single(
                             exact_correct += (preds == yb).all(dim=-1).sum().item()
                     disc_bit = bit_correct / bit_total if bit_total else 0.0
                     disc_exact = exact_correct / n_eval if n_eval else 0.0
+                    if ready:
+                        discrete_score = (disc_exact, disc_bit)
+                        previous = best_checkpoints["best_discrete_task"]
+                        if previous is None or discrete_score > previous["score"]:
+                            best_checkpoints["best_discrete_task"] = {
+                                "epoch": epoch, "score": discrete_score,
+                                "discrete_exact_accuracy": disc_exact,
+                                "discrete_bit_accuracy": disc_bit,
+                                "polarization": pol,
+                                "state_dict": _cpu_state_dict(discrete_clone),
+                            }
                 except Exception:
                     pass
             entry: dict[str, Any] = {
@@ -705,8 +794,9 @@ def run_single(
                 "D_b": pol.get("D_b"),
                 "D_combined": pol.get("D_combined"),
                 "polarization": pol,
+                "parameter_binarized": ready,
                 "discretization_ready": ready,
-                "diagnostic_discrete_status": "ready_evaluation" if ready else "diagnostic_only",
+                "diagnostic_discrete_status": "parameter_binarized" if ready else "diagnostic_only",
                 "temperatures": temps,
                 "taus": {k.replace("temperature", "tau"): (1.0 / v if isinstance(v, float) and v else None) for k, v in temps.items()},
                 "gradient_summary": summary,
@@ -791,6 +881,21 @@ def run_single(
     activation_stats = compute_activation_stats(unwrapped, x_eval, device)
     residual_diagnostics = compute_residual_diagnostics(unwrapped, x_eval, y_eval, device)
 
+    checkpoint_summary = {}
+    for label, value in best_checkpoints.items():
+        if value is None:
+            checkpoint_summary[label] = None
+        else:
+            checkpoint_summary[label] = {
+                k: v for k, v in value.items() if k not in ("state_dict", "score")
+            }
+    checkpoint_path_str = None
+    if checkpoint_output is not None:
+        checkpoint_path = Path(checkpoint_output)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(best_checkpoints, checkpoint_path)
+        checkpoint_path_str = str(checkpoint_path)
+
     parameter_stats: dict = {}
     with torch.no_grad():
         for i, layer in enumerate(unwrapped.expectation_layers):
@@ -806,9 +911,12 @@ def run_single(
 
     runtime_seconds = time.time() - t_start
     resolved_model_cfg = dict(model_cfg)
-    resolved_model_cfg["layer_dims"] = (
-        [int(h) for h in model_cfg.get("hidden_dims", [])] + [task["output_dim"]]
-    )
+    if model_cfg.get("architecture") == "modern":
+        width = int(model_cfg.get("width", 64))
+        resolved_model_cfg["layer_dims"] = [width] * (1 + 2 * int(model_cfg.get("num_residual_blocks", 2))) + [task["output_dim"]]
+        resolved_model_cfg["residual_positions"] = list(range(int(model_cfg.get("num_residual_blocks", 2)))) if model_cfg.get("residual_enabled", True) else []
+    else:
+        resolved_model_cfg["layer_dims"] = [int(h) for h in model_cfg.get("hidden_dims", [])] + [task["output_dim"]]
     experiment_id = make_experiment_id(
         task_name, task["task_params"], seed, resolved_model_cfg,
         training_cfg, git_commit)
@@ -837,14 +945,11 @@ def run_single(
         "discrete_accuracy": disc_exact,
         "discrete_exact_accuracy": disc_exact,
         "discrete_function_recovery": function_recovery,
-        "discrete_status": "ready_evaluation" if (
-            compute_polarization_stats(unwrapped).get("D_w", float("inf")) <= 0.01 and
-            compute_polarization_stats(unwrapped).get("D_b", float("inf")) <= 0.01 and
-            compute_polarization_stats(unwrapped).get("w_corner_05", 0.0) >= 0.95 and
-            compute_polarization_stats(unwrapped).get("b_corner_05", 0.0) >= 0.95
-        ) else "diagnostic_only",
+        "discrete_status": "parameter_binarized" if parameter_binarized(compute_polarization_stats(unwrapped)) else "diagnostic_only",
+        "parameter_binarized_first_epoch": next(
+            (entry["epoch"] for entry in trajectory if entry.get("parameter_binarized")), None),
         "discretization_ready_first_epoch": next(
-            (entry["epoch"] for entry in trajectory if entry.get("discretization_ready")), None),
+            (entry["epoch"] for entry in trajectory if entry.get("parameter_binarized")), None),
         "continuous_discrete_gap": cont_exact - disc_exact,
         "hardmax_discrete_gap": hard_exact - disc_exact,
         # Explicit truth-table recovery keys for full-table tasks.
@@ -853,6 +958,11 @@ def run_single(
         "truth_table_discrete_bit_accuracy": disc_bit if eval_mode == FULL_TRUTH_TABLE else None,
         "truth_table_discrete_exact_accuracy": disc_exact if eval_mode == FULL_TRUTH_TABLE else None,
         "truth_table_exact_match": function_recovery if eval_mode == FULL_TRUTH_TABLE else None,
+        "full_truth_table_bit_accuracy": disc_bit if eval_mode == FULL_TRUTH_TABLE else None,
+        "full_truth_table_exact_accuracy": disc_exact if eval_mode == FULL_TRUTH_TABLE else None,
+        "full_truth_table_continuous_bit_accuracy": cont_bit if eval_mode == FULL_TRUTH_TABLE else None,
+        "full_truth_table_continuous_exact_accuracy": cont_exact if eval_mode == FULL_TRUTH_TABLE else None,
+        "function_exact_recovery": function_recovery if eval_mode == FULL_TRUTH_TABLE else None,
         "final_loss": final_loss,
         "runtime_seconds": runtime_seconds,
         "cuda_available": torch.cuda.is_available(),
@@ -865,15 +975,14 @@ def run_single(
         "residual_diagnostics": residual_diagnostics,
         "parameter_stats": parameter_stats,
         "circuit_stats": circuit_stats,
+        "checkpoint_summary": checkpoint_summary,
+        "checkpoint_file": checkpoint_path_str,
         "trajectory": trajectory,
         "initial_state": initial_state,
         "final_polarization": compute_polarization_stats(unwrapped),
-        "discretization_ready": bool(
-            compute_polarization_stats(unwrapped).get("D_w", float("inf")) <= 0.01 and
-            compute_polarization_stats(unwrapped).get("D_b", float("inf")) <= 0.01 and
-            compute_polarization_stats(unwrapped).get("w_corner_05", 0.0) >= 0.95 and
-            compute_polarization_stats(unwrapped).get("b_corner_05", 0.0) >= 0.95
-        ),
+        "parameter_binarized": parameter_binarized(compute_polarization_stats(unwrapped)),
+        "parameter_binarized": parameter_binarized(compute_polarization_stats(unwrapped)),
+        "discretization_ready": parameter_binarized(compute_polarization_stats(unwrapped)),
         "train_ratio": _train_ratio,
         "discretization_threshold": discretization_threshold,
     }
@@ -956,8 +1065,14 @@ def main() -> None:
         training_cfg=training_cfg,
         seed=seed,
         discretization_threshold=float(cfg.get("discretization_threshold", 0.5)),
+        checkpoint_output=cfg.get("checkpoint_output"),
     )
     metrics["research_experiment_id"] = cfg.get("experiment_id")
+    metrics["parent_experiment"] = cfg.get("parent_experiment")
+    metrics["training_seed"] = seed
+    metrics["sampling_seed"] = cfg.get("sampling_seed")
+    metrics["architecture"] = cfg.get("model", {}).get("architecture", "historical")
+    metrics["dataset"] = {"task": task_name, "parameters": task_params, "eval_mode": metrics["eval_mode"]}
     print(json.dumps(metrics, indent=2))
     if args.output:
         Path(args.output).write_text(json.dumps(metrics, indent=2))

@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 from layers import xor, XorResidualLogicBlock
 from discrete_logic_net import DiscreteXorResidualLogicBlock
 from models import ModernLogicGateNet
+from research.run_experiment import parameter_binarized
 
 
 def _truth_rows(n):
@@ -55,3 +56,12 @@ def test_no_residual_control_has_same_parameter_shapes():
     n = ModernLogicGateNet(4, 2, width=5, num_residual_blocks=2, residual_enabled=False)
     assert [tuple(x.weight.shape) for x in r.expectation_layers] == [tuple(x.weight.shape) for x in n.expectation_layers]
     assert len(r.expectation_layers) == len(n.expectation_layers) == 6
+
+
+def test_parameter_binarized_is_only_a_corner_predicate():
+    assert parameter_binarized({"D_w": 0.005, "D_b": 0.005,
+                                "w_corner_05": 0.96, "b_corner_05": 0.97})
+    assert not parameter_binarized({"D_w": 0.005, "D_b": 0.005,
+                                    "w_corner_05": 0.96, "b_corner_05": 0.94})
+    assert not parameter_binarized({"D_w": 0.5, "D_b": 0.5,
+                                    "w_corner_05": 1.0, "b_corner_05": 1.0})

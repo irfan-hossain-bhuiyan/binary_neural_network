@@ -230,6 +230,12 @@ def main() -> None:
 
     result = {"status": "success", "git_commit": COMMIT, "metrics": metrics}
     RESULT_PATH.write_text(json.dumps(result, indent=2))
+    # Preserve explicitly requested research checkpoints as downloadable
+    # kernel outputs before removing the extracted source tree.
+    checkpoint_dir = REPO_DIR / "artifacts" / "checkpoints"
+    if checkpoint_dir.exists():
+        for checkpoint in checkpoint_dir.glob("*.pt"):
+            shutil.copy2(checkpoint, RESULT_PATH.parent / checkpoint.name)
     print(f"Wrote {RESULT_PATH}")
     # Remove the extracted source tree so `kaggle kernels output` only
     # downloads result.json (kept on failure for debugging).

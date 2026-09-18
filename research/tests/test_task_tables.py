@@ -105,6 +105,23 @@ def test_bitwise_xor_reproducible():
         assert y == ((c >> 3) & 1, (c >> 2) & 1, (c >> 1) & 1, c & 1), x
 
 
+def test_bitwise_xor_truth_table_is_exact_and_complete():
+    from boolean_tasks import FULL_TRUTH_TABLE
+
+    task = build_task("bitwise_xor_truth_table", {"bits": 4})
+    assert task["input_dim"] == 8 and task["output_dim"] == 4
+    assert task["eval_mode"] == FULL_TRUTH_TABLE
+    assert task["X"].shape == (256, 8) and task["Y"].shape == (256, 4)
+    rows = _rows(task["X"])
+    assert len(set(rows)) == 256
+    for x, y in zip(rows, _rows(task["Y"])):
+        a = sum(bit << (3 - i) for i, bit in enumerate(x[:4]))
+        b = sum(bit << (3 - i) for i, bit in enumerate(x[4:]))
+        value = a ^ b
+        expected = tuple((value >> shift) & 1 for shift in (3, 2, 1, 0))
+        assert y == expected, (x, y, expected)
+
+
 def test_all_values_binary():
     import boolean_tasks as bt
 
@@ -118,6 +135,8 @@ def test_all_values_binary():
             params = {"bits": 2}
         elif name == "bitwise_xor":
             params = {"bits": 2, "num_samples": 64}
+        elif name == "bitwise_xor_truth_table":
+            params = {"bits": 2}
         t = build_task(name, params, seed=1)
         vals = set(t["X"].tolist().__str__().replace("[", "").replace("]", "").replace(",", "").split())
         assert vals <= {"0.0", "1.0", "0", "1", ".0"}, (name, vals)

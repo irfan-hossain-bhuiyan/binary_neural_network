@@ -164,6 +164,19 @@ def build_bitwise_xor(params: dict, seed: int = 0) -> dict:
     )
 
 
+def build_bitwise_xor_truth_table(params: dict, seed: int = 0) -> dict:
+    """Complete truth table for bitwise XOR (function recovery, not generalization)."""
+    bits = int(params.get("bits", 4))
+    if bits < 1 or bits > 8:
+        raise ValueError(f"truth-table XOR supports 1..8 bits, got {bits}")
+    X = _all_binary_rows(2 * bits)
+    Y = torch.logical_xor(X[:, :bits].bool(), X[:, bits:].bool()).float()
+    return _task_dict(
+        "bitwise_xor_truth_table", {"bits": bits}, X, Y, FULL_TRUTH_TABLE,
+        f"complete {2 ** (2 * bits)}-row {bits}-bit XOR truth table; function recovery",
+    )
+
+
 TASK_BUILDERS = {
     "identity": build_identity,
     "not": build_not,
@@ -176,6 +189,7 @@ TASK_BUILDERS = {
     "full_adder": build_full_adder,
     "compare_unsigned": build_compare_unsigned,
     "bitwise_xor": build_bitwise_xor,
+    "bitwise_xor_truth_table": build_bitwise_xor_truth_table,
 }
 
 

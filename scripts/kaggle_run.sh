@@ -122,7 +122,7 @@ if mode == 'suite' and isinstance(m.get('runs'), list):
     seeds = os.environ['SEEDS'].replace(',', '-')
     dest = f"kaggle/results/{short}_suite_{suite}_seeds{seeds}.json"
 else:
-    exp = m.get('experiment_name', m.get('task_name', 'experiment'))
+    exp = m.get('research_experiment_id', m.get('experiment_name', m.get('task_name', 'experiment')))
     seed = m.get('seed', 'noseed')
     dest = f"kaggle/results/{short}_{exp}_seed{seed}.json"
 print(dest)
@@ -130,6 +130,14 @@ EOF
 )"
 cp kaggle/output/result.json "$ARCHIVED"
 echo "Archived result to $ARCHIVED"
+
+# Keep explicitly emitted checkpoint files beside their result artifact.
+for checkpoint in kaggle/output/*.pt; do
+    [ -f "$checkpoint" ] || continue
+    dest="kaggle/results/${SHORT_COMMIT}_$(basename "$checkpoint")"
+    cp "$checkpoint" "$dest"
+    echo "Archived checkpoint to $dest"
+done
 
 python3 - "$ARCHIVED" <<'EOF'
 import json, sys
