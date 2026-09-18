@@ -249,3 +249,47 @@ MPLCONFIGDIR=/tmp/mplconfig python research/plot_modern_architecture_report.py
 M001’s 4-bit run shows partial task learning, strong Boolean polarization, and a material soft-to-discrete gap. Readiness by itself was an unreliable proxy for task success, and the run continued learning after it first became ready. The branch measurements are consistent with a strong local XOR skip derivative, but actual activation gradients still attenuate through the blocks. The data do not yet tell us whether the residual architecture is better than an equally deep network without residuals.
 
 The corrected soft/hard/Boolean comparison is complete and appended to the canonical notebook. It shows that both the continuous aggregation and thresholding matter on this run. No exact truth-table or matched no-residual experiment has been run. Those are the next controlled questions; no temperature, regularization, stochastic-inference, or MNIST experiment has been run.
+
+
+## M001-R: exhaustive 4-bit truth table
+
+M001-R changes the task protocol to all 256 4-bit operand pairs, keeping the
+modern width-64 residual network and its M001 training settings. It is a
+complete function-recovery test, not a held-out generalization test. The run
+used seed 0, 2000 epochs, a Tesla T4 (62.02 s), and the SHA-verified package
+`6a33da88923b466e6498ef940d46b02742fc82e2` (Kaggle kernel v13).
+
+| Inference on all 256 rows | Bit accuracy | Exact-row accuracy |
+|---|---:|---:|
+| Continuous soft | 0.86816 | 0.58594 |
+| Continuous hard-max | 0.64746 | 0.16406 |
+| Exact Boolean | 0.64746 | 0.16797 |
+
+The Boolean network exactly matches 43/256 rows and selects 4,088/17,152
+possible edges. It does not recover the function. At epoch 0, D_w=0.08629 and
+D_b=0.08571. Parameter binarization first passed the operational threshold
+at epoch 175; final D_w=0.002761 and D_b=0.001725, but discrete exact
+accuracy was only 0.16797. The best continuous exact accuracy was 0.61719 at
+epoch 1725; the best Boolean exact accuracy among binarized checkpoints was
+0.18359 at epoch 1975.
+
+Soft exact accuracy is 42.19 percentage points higher than hard-max, whereas
+hard-max and Boolean differ by only 0.39 points. This shifts the immediate
+interpretation toward the current continuous aggregation semantics as the
+larger gap on the exhaustive task endpoint. It does not establish that the
+soft aggregation is the only issue or explain the failure to learn the full
+truth table. The M001-R JSON and checkpoint remain archived locally at
+`kaggle/results/6a33da8_M001-R_seed0.json` and
+`kaggle/results/6a33da8_M001-R_seed0.pt`.
+
+Block 0/1 mean signed direct XOR gain is -0.8073/-0.7183; mean absolute gain
+is 0.9561/0.8827. Their mask-one and output-flip fractions are 0.9005/0.8698.
+Backward activation-gradient norm transfer `||grad_input||/||grad_output||`
+is 3.984/0.535 (mean-absolute transfer 5.556/0.886). Layer parameter gradient
+means are uneven, with first/last ratio 0.000738. These measurements are
+descriptive; the matched control is needed to isolate residual effects.
+
+The next run is M001-NR: same layers, initialization, optimizer, training
+budget, exact truth table, and seed, with residual XOR disabled as the only
+change. Temperature and regularization experiments remain queued until this
+control is recorded.

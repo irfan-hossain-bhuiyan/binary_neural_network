@@ -39,8 +39,8 @@ experiment bookkeeping thresholds, not established scientific constants.
 | ID | Git SHA | hypothesis | task | topology | seed | result |
 |---|---|---|---|---|---|---|
 | M001 | 1f25331357476462c947b7269a47c8ebada920c9 | XOR residual blocks can train, polarize, and discretize faithfully | sampled bitwise_xor, 4-bit | stem 64, two 64-wide two-layer XOR blocks, head | 0 | 2000 epochs; soft/hard/Boolean exact 0.83575/0.77025/0.70550; ready first at 5 |
-| M001-R | pending | Recover complete 4-bit XOR function with residuals | exact 256-row table | same modern residual topology | 0 | planned; next run |
-| M001-NR | pending | Matched same-depth graph without residual XOR | same exact 256-row table | same modern layers, residual disabled | 0 | planned matched control |
+| M001-R | `6a33da88923b466e6498ef940d46b02742fc82e2` | Evaluate exact full-table recovery with residual topology | exact 256-row table | stem64 + 2 residual blocks + head | 0 | 2000 epochs; function recovery false; soft/hard/Boolean exact 0.5859/0.1641/0.1680; T4 62.0s |
+| M001-NR | pending | Matched same-depth graph without residual XOR | same exact 256-row table | same modern layers, residual disabled | 0 | next; pending commit/run |
 
 ## M001 — Modern XOR-residual baseline
 
@@ -434,3 +434,102 @@ gaps of similar size. It supports moving to exact truth-table recovery and the
 matched no-residual control next. Temperature, regularization, stochastic
 inference and MNIST remain untouched; no later experiment is being started by
 this roadmap update.
+
+
+## M001-R — Exact 4-bit XOR truth-table recovery
+
+### Parent experiment
+
+M001 sampled 4-bit XOR, seed 0, with the same modern residual network and
+training setup.
+
+### Hypothesis
+
+With all 256 possible operand pairs presented, the modern residual network can
+recover the complete 4-bit XOR function rather than only a sampled split.
+
+### Single changed variable
+
+The dataset protocol changed from 20,000 sampled examples with an 80/20 split
+to the complete 256-row truth table, each input exactly once. No generalization
+claim is made. Architecture, initialization, optimizer, loss, regularization,
+temperature, plateau noise, seed, and epoch budget were held to the M001 setup.
+
+### Architecture
+
+Modern width-64 stem, two two-layer width-64 XOR-residual blocks, and 4-bit
+head. Six logic layers; 17,152 possible edges. Residual enabled.
+
+### Dataset
+
+`bitwise_xor_truth_table`, 4 operand bits, inputs `[a3 a2 a1 a0 b3 b2 b1 b0]`,
+all 256 possible rows, target `a XOR b`, no held-out examples. The outcome is
+function recovery on a complete truth table, not unseen-input generalization.
+
+### Training configuration
+
+Seed 0, 2000 epochs, Adam 0.01, MSE, batch 256, learned per-layer
+temperatures initialized at 1.0, `regularization_factory2` with
+`disc_lambda=0.5` and `tau_lambda=0.3`, plus plateau noise (std 0.3). Tesla T4,
+62.02 seconds, Kaggle kernel version 13. Exact packaged and returned SHA:
+`6a33da88923b466e6498ef940d46b02742fc82e2`. Local result artifact:
+`kaggle/results/6a33da8_M001-R_seed0.json`; checkpoint:
+`kaggle/results/6a33da8_M001-R_seed0.pt`.
+
+### Metrics
+
+| Final inference on all 256 rows | Bit accuracy | Exact-row accuracy |
+|---|---:|---:|
+| Continuous soft aggregation | 0.86816 | 0.58594 |
+| Continuous hard-max aggregation | 0.64746 | 0.16406 |
+| Exact discrete Boolean network | 0.64746 | 0.16797 |
+
+`function_exact_recovery=false`. The Boolean circuit gets 43 of 256 rows
+exactly right. It selects 4,088 of 17,152 possible edges (23.83%). At epoch 0,
+D_w=0.08629 and D_b=0.08571. The operational parameter-binarized predicate
+first became true at epoch 175; at the final epoch D_w=0.002761, D_b=0.001725,
+w_corner_05=0.98793, and b_corner_05=0.99382. Best continuous validation
+accuracy occurred at epoch 1725 (exact 0.61719, bit 0.87598), while best
+thresholded Boolean exact accuracy among ready checkpoints occurred at epoch
+1975 (0.18359; bit 0.64941). Polarization and function recovery remain distinct.
+
+### Result
+
+The model did not recover the complete function. Soft exact accuracy exceeds
+hard-max by 42.19 percentage points. Hard-max and Boolean exact accuracy are
+within 0.39 points, with Boolean slightly higher. Thus, at this endpoint, the
+large discrepancy is primarily associated with the continuous soft
+aggregation versus hard Boolean OR semantics; thresholding parameters adds
+little additional exact-accuracy gap at the final point. This is an observed
+comparison, not a general causal result.
+
+### Residual-block behavior
+
+On the final diagnostics, block 0 has mean signed direct gain -0.8073 and mean
+absolute gain 0.9561; block 1 has -0.7183 and 0.8827. The fraction of branch
+mask bits equal to one/output bits flipped is 0.9005 and 0.8698, so both
+branches behave mostly as learned bit-flip masks, often close to NOT on an
+activation. This does not establish that the residuals help optimization.
+
+### Gradient behavior
+
+Backpropagation is measured from block output toward its input. The
+`||grad_input||/||grad_output||` ratios are 3.984 for block 0 and 0.535 for
+block 1; mean-absolute ratios are 5.556 and 0.886. Thus the measured activation
+gradient grows backward across block 0 and is smaller at block 1 input than
+output. Parameter-gradient means vary strongly by layer; the first/last
+parameter gradient ratio is 0.000738. No matched control exists yet, so this
+run cannot attribute these patterns to the residual operation.
+
+### What this does NOT prove
+
+It does not show generalization, exact function recovery, that the soft OR is
+the sole cause of the gap across tasks/checkpoints, or that XOR residuals help
+relative to a matched deep no-residual network. One seed is screening evidence.
+
+### Next question
+
+On exactly the same truth table and training setup, does disabling only the XOR
+residual operation materially change learning, polarization, gradients, or
+Boolean function recovery? Run M001-NR before changing temperature or
+regularization.
