@@ -21,7 +21,7 @@ from models import SigmoidOrModernLogicGateNet  # noqa: E402
 from research.boolean_tasks import build_task  # noqa: E402
 
 OUT = ROOT / "research" / "operator_results"
-CK = OUT / "stage_b3_checkpoints"
+CK = ROOT / "artifacts" / "checkpoints" / "B3R"
 FIG = ROOT / "research" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 OPS = ("lehmer_p2", "probabilistic_or")
@@ -39,7 +39,8 @@ def model_for(op: str) -> SigmoidOrModernLogicGateNet:
 
 def load_model(op: str, seed: int, suffix: str = "best_continuous"):
     model = model_for(op)
-    path = CK / f"B3_{op}_seed{seed}_{suffix}.pt"
+    suffix = {"best_continuous": "best_continuous_mse", "best_hard": "best_hard_exact", "best_boolean": "best_boolean_exact"}.get(suffix, suffix)
+    path = CK / f"B3R_{op}_seed{seed}_{suffix}.pt"
     model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
     model.eval()
     return model, path
@@ -237,6 +238,20 @@ def functional_layers(model, x):
     return result
 
 
+def error_report(model, x, y):
+    with torch.no_grad():
+        pred = model.to_discrete(.5)(x.bool()).float()
+    wrong = (pred != y).any(-1)
+    return {
+        "wrong_rows": [int(i) for i in torch.nonzero(wrong, as_tuple=False).flatten()],
+        "wrong_row_count": int(wrong.sum()),
+        "bit_exact_accuracy": [float(((pred[:, i] >= .5) == (y[:, i] >= .5)).float().mean()) for i in range(y.shape[1])],
+        "errors_when_operands_equal": int(((pred != y).any(-1) & (x[:, :4] == x[:, 4:]).all(-1)).sum()),
+        "errors_when_a_zero": int(((pred != y).any(-1) & (x[:, :4] == 0).all(-1)).sum()),
+        "errors_when_b_zero": int(((pred != y).any(-1) & (x[:, 4:] == 0).all(-1)).sum()),
+    }
+
+
 def accumulation_report(model, x):
     if model.or_operator != "probabilistic_or":
         return {}
@@ -265,12 +280,13 @@ def analyze_one(op, seed, x, y):
         "contributions": contribution_report(model, x), "lehmer_gradients": lehmer_report(model, x),
         "circuit": circuit_report(model), "functional_layers": functional_layers(model, x),
         "hardening": hardening_report(model, x, y), "accumulation": accumulation_report(model, x),
+        "errors": error_report(model, x, y),
     }
 
 
 def verify_canonical_checkpoints(x, y):
     """Reject stale local checkpoints before producing a canonical report."""
-    archive = json.loads((OUT / "stage_b3_kaggle_v6.json").read_text())
+    archive = json.loads((OUT / "stage_b3r_results.json").read_text())
     expected = {
         (r["operator"], r["seed"]): r["best_continuous"]["continuous"]["mse"]
         for r in archive["metrics"]["results"]
@@ -282,7 +298,7 @@ def verify_canonical_checkpoints(x, y):
             raise RuntimeError(
                 f"checkpoint provenance mismatch for {path}: observed MSE "
                 f"{observed:.9g}, canonical Kaggle MSE {target:.9g}. "
-                "Export the canonical Kaggle checkpoints before analysis."
+                "Export and verify the B3R checkpoints before analysis."
             )
 
 
@@ -325,7 +341,20 @@ def main():
     x, y = task_data()
     verify_canonical_checkpoints(x, y)
     data = {op: {str(s): analyze_one(op, s, x, y) for s in SEEDS} for op in OPS}
-    out = OUT / "b3_forensic_analysis.json"
+    # Parameter-level distance is useful context, but functional-layer
+    # diagnostics in the report remain the primary comparison.
+    for op in OPS:
+        models = {s: load_model(op, s)[0] for s in SEEDS}
+        pairwise = {}
+        for i, a in enumerate(SEEDS):
+            for b in SEEDS[i + 1:]:
+                distance = 0
+                for la, lb in zip(layer_list(models[a]), layer_list(models[b])):
+                    distance += int(torch.count_nonzero((la.effective_gate() >= .5) ^ (lb.effective_gate() >= .5)))
+                    distance += int(torch.count_nonzero((la.actual_bias() >= .5) ^ (lb.actual_bias() >= .5)))
+                pairwise[f"seed{a}_vs_seed{b}"] = distance
+        data[op]["pairwise_parameter_hamming"] = pairwise
+    out = OUT / "b3r_forensic_analysis.json"
     out.write_text(json.dumps(data, indent=2))
     make_figures(data)
     print(json.dumps({"output": str(out), "figures": [str(FIG / n) for n in ("b3_lehmer_seed_comparison.png", "b3_layer_hardening.png", "b3_functional_threshold_margin.png", "b3_prob_or_accumulation.png")]}, indent=2))

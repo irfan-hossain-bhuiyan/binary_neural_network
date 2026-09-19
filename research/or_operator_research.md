@@ -311,3 +311,29 @@ first successful run.
 B3 is complete. The next experiment should be chosen after reviewing the
 seed-1 Lehmer p=2 failure and the probabilistic-OR hard/Boolean divergence;
 MNIST and further operator changes remain deferred.
+
+## Stage B3R — checkpoint-export replication
+
+B3R reproduced the exact B3 configuration in a separate Kaggle kernel rather
+than replacing the historical B3 result. Kernel version 2 used Git SHA
+`382df82a87fb79f2138ca45c6d6aca0e96daca4e`, exported 65 checkpoints, and
+verified every checkpoint by reload and reevaluation before recording its
+SHA-256 hash. The result is archived at
+`operator_results/stage_b3r_results.json`; weights are under
+`artifacts/checkpoints/B3R/`.
+
+| operator | B3 Boolean exact seeds | B3R Boolean exact seeds | B3R minimum-MSE range | reproduction |
+|---|---|---|---:|---|
+| Lehmer p=2 | 1, .5, 1 | 1, .5, 1 | .000218–.020627 | strong |
+| hard max | .5, .375, .5 | .5, .375, .5 | .0632–.0884 | strong |
+| probabilistic OR | 1, 1, 1 | 1, 1, 1 | 9.67e-5–1.00e-4 | strong |
+| softmax value α=16 | .5, .734, .156 | .5, .734, .156 | .01198–.05848 | strong |
+
+The replication therefore supports the historical qualitative observations:
+Lehmer p=2 has seed-sensitive Boolean recovery, while probabilistic OR can
+produce a correct thresholded Boolean function despite a dramatically wrong
+same-parameter hard-max computation. B3R is not claimed to recreate the
+original floating-point weights; it reproduces the operator-level phenomena.
+
+B3D forensic results are documented separately in
+`research/b3_forensic_analysis.md`.
