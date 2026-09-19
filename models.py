@@ -8,7 +8,8 @@ import torch
 import torch.nn as nn
 
 from layers import (OrNorGateLayer, XorResidualLogicBlock,
-                    TemperatureFreeLogicLayer, TemperatureFreeXorResidualBlock)
+                    TemperatureFreeLogicLayer, TemperatureFreeXorResidualBlock,
+                    SigmoidOrLogicLayer, SigmoidOrXorResidualBlock, xor)
 
 
 class MultiLayerLogicGateNet(nn.Module):
@@ -387,6 +388,70 @@ class TemperatureFreeModernLogicGateNet(nn.Module):
         for block in self.blocks:
             x = block(x)
         return self.head(x)
+
+    def to_discrete(self, threshold: float = 0.5):
+        from discrete_logic_net import DiscreteModernLogicGateNet
+        result = DiscreteModernLogicGateNet(
+            self.input_dim, self.output_dim, self.width, self.num_residual_blocks,
+            residual_enabled=self.residual_enabled)
+        with torch.no_grad():
+            for src, dst in zip(self.expectation_layers, result.expectation_layers):
+                gate, bias = src.to_discrete(threshold)
+                dst.weight.copy_(gate)
+                dst.bias.copy_(bias)
+        return result
+
+
+class SigmoidOrModernLogicGateNet(nn.Module):
+    """Modern XOR-residual graph for controlled OR-surrogate comparisons."""
+
+    def __init__(self, input_dim: int, output_dim: int, width: int = 64,
+                 num_residual_blocks: int = 2, or_operator: str = "hardmax",
+                 gate_initializations: list[float] | None = None,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 residual_enabled: bool = True):
+        super().__init__()
+        if width <= 0 or num_residual_blocks < 0:
+            raise ValueError("width must be positive and number of residual blocks nonnegative")
+        self.input_dim, self.output_dim = input_dim, output_dim
+        self.width, self.num_residual_blocks = width, num_residual_blocks
+        self.or_operator = or_operator
+        self.residual_enabled = residual_enabled
+        count = 2 + 2 * num_residual_blocks
+        if gate_initializations is None:
+            gate_initializations = [0.75 if i % 2 == 0 else 0.25 for i in range(count)]
+        if len(gate_initializations) != count:
+            raise ValueError(f"expected {count} gate initializers, got {len(gate_initializations)}")
+        self.stem = SigmoidOrLogicLayer(input_dim, width, or_operator, gate_initializations[0], bias_initialization)
+        self.blocks = nn.ModuleList()
+        for i in range(num_residual_blocks):
+            j = 1 + 2 * i
+            self.blocks.append(SigmoidOrXorResidualBlock(
+                width, or_operator, (gate_initializations[j], gate_initializations[j + 1]),
+                bias_initialization, residual_enabled))
+        self.head = SigmoidOrLogicLayer(width, output_dim, or_operator, gate_initializations[-1], bias_initialization)
+
+    @property
+    def expectation_layers(self) -> list[SigmoidOrLogicLayer]:
+        result = [self.stem]
+        for block in self.blocks:
+            result.extend([block.layer1, block.layer2])
+        result.append(self.head)
+        return result
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x)
+        for block in self.blocks:
+            x = block(x)
+        return self.head(x)
+
+    def forward_hard(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem.hard_forward(x)
+        for block in self.blocks:
+            h1 = block.layer1.hard_forward(x)
+            h2 = block.layer2.hard_forward(h1)
+            x = xor(x, h2) if block.residual_enabled else h2
+        return self.head.hard_forward(x)
 
     def to_discrete(self, threshold: float = 0.5):
         from discrete_logic_net import DiscreteModernLogicGateNet

@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from prelude import leaky_clamp
+from research.or_surrogates import OrSurrogate, get_operator
 
 
 def xor(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -246,6 +247,69 @@ class TemperatureFreeLogicLayer(nn.Module):
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("threshold must be in [0,1]")
         return self.effective_gate().detach() >= threshold, self.actual_bias().detach() >= threshold
+
+
+class SigmoidOrLogicLayer(nn.Module):
+    """Logic layer with a common sigmoid edge map and configurable OR surrogate.
+
+    This is the Stage-B operator-comparison layer.  It intentionally has no
+    temperature, tau, plateau noise, or discretization regularizer.  The
+    operator receives the actual contribution ``v = xor(x, bias) * sigmoid(r)``.
+    """
+
+    def __init__(self, in_features: int, out_features: int, or_operator: str | OrSurrogate,
+                 gate_initialization: float = 0.5,
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0)):
+        super().__init__()
+        if not 0.0 < gate_initialization < 1.0:
+            raise ValueError("gate_initialization must be strictly between 0 and 1")
+        self.in_features, self.out_features = in_features, out_features
+        self.or_operator_name = or_operator if isinstance(or_operator, str) else getattr(or_operator, "name", "custom")
+        self.or_operator = get_operator(or_operator) if isinstance(or_operator, str) else or_operator
+        self.hard_operator = get_operator("hardmax")
+        self.raw_edge = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features, in_features))
+        nn.init.constant_(self.raw_edge, torch.logit(torch.tensor(float(gate_initialization))).item())
+        bias_initialization(self.bias)
+
+    def effective_gate(self) -> torch.Tensor:
+        return torch.sigmoid(self.raw_edge)
+
+    def actual_bias(self) -> torch.Tensor:
+        return cast(torch.Tensor, leaky_clamp(self.bias, 0.0, 1.0, 0.1))
+
+    def contributions(self, x: torch.Tensor) -> torch.Tensor:
+        literal = xor(x.unsqueeze(1), self.actual_bias().unsqueeze(0))
+        return literal * self.effective_gate().unsqueeze(0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.or_operator(self.contributions(x))
+
+    def hard_forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.hard_operator(self.contributions(x))
+
+    def to_discrete(self, threshold: float = 0.5) -> tuple[torch.Tensor, torch.Tensor]:
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("threshold must be in [0,1]")
+        return self.effective_gate().detach() >= threshold, self.actual_bias().detach() >= threshold
+
+
+class SigmoidOrXorResidualBlock(nn.Module):
+    """Two configurable sigmoid-edge layers with an exact XOR residual."""
+
+    def __init__(self, width: int, or_operator: str | OrSurrogate,
+                 gate_initializations: tuple[float, float] = (0.75, 0.25),
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 residual_enabled: bool = True):
+        super().__init__()
+        self.layer1 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[0], bias_initialization)
+        self.layer2 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[1], bias_initialization)
+        self.residual_enabled = residual_enabled
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h2 = self.layer2(self.layer1(x))
+        return xor(x, h2) if self.residual_enabled else h2
+
 
 
 class TemperatureFreeXorResidualBlock(nn.Module):
