@@ -106,7 +106,9 @@ def run(epochs=3000, seeds=(0,1,2), device=None):
                 bias_initialization=lambda t: nn.init.normal_(t,mean=.5,std=.1)).to(device)
             opt=torch.optim.Adam(model.parameters(),lr=.01)
             best_cont=None; best_hard=None; best_bool=None; milestones={}; trajectory=[]; first_bool=None; lowest_wrong=None
-            ckdir=OUT/"stage_b3_checkpoints"; ckdir.mkdir(exist_ok=True)
+            # The Kaggle package contains source files only, so recreate the
+            # result/checkpoint directory tree at runtime when needed.
+            ckdir=OUT/"stage_b3_checkpoints"; ckdir.mkdir(parents=True, exist_ok=True)
             for epoch in range(epochs+1):
                 out=model(x); loss=(out-y).square().mean(); opt.zero_grad(); loss.backward(); opt.step()
                 # Full hard/Boolean conversion and gate diagnostics are sampled
