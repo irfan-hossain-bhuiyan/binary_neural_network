@@ -116,25 +116,38 @@ def run(epochs=3000, seeds=(0,1,2), device=None, export_dir=None):
             opt=torch.optim.Adam(model.parameters(),lr=.01)
             best_cont=None; best_hard=None; best_bool=None; milestones={}; trajectory=[]; first_bool=None; lowest_wrong=None
             checkpoint_manifest=[]
+            pending_checkpoints={}
 
             def save_verified(label, epoch, record):
                 if export_dir is None:
                     return
-                path = export_dir / f"B3R_{op}_seed{seed}_{label}.pt"
-                torch.save(model.state_dict(), path)
-                saved = torch.load(path, map_location=device, weights_only=True)
-                check = SigmoidOrModernLogicGateNet(8, 4, width=64, num_residual_blocks=2,
-                    or_operator=op, bias_initialization=lambda t: nn.init.normal_(t,mean=.5,std=.1)).to(device)
-                check.load_state_dict(saved); check.eval()
-                verify = evaluate(check, x, y)
-                for mode in ("continuous", "hard", "boolean"):
-                    for metric in ("mse", "bit_accuracy", "exact_accuracy"):
-                        expected = record[mode][metric]
-                        actual = verify[mode][metric]
-                        if abs(actual - expected) > 1e-6:
-                            raise RuntimeError(f"checkpoint verification failed for {path}: {mode}.{metric} {actual} != {expected}")
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                checkpoint_manifest.append({"checkpoint": str(path), "sha256": digest, "epoch": epoch, "metrics": verify})
+                # Keep only the latest state for each conceptual checkpoint;
+                # B3R flushes and verifies each one once after this run.  This
+                # avoids repeatedly serializing/reloading every transient
+                # improvement during a 3000-epoch run.
+                pending_checkpoints[label] = (epoch, copy.deepcopy(record), {
+                    k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+                })
+
+            def flush_verified():
+                if export_dir is None:
+                    return
+                for label, (epoch, record, state) in pending_checkpoints.items():
+                    path = export_dir / f"B3R_{op}_seed{seed}_{label}.pt"
+                    torch.save(state, path)
+                    saved = torch.load(path, map_location=device, weights_only=True)
+                    check = SigmoidOrModernLogicGateNet(8, 4, width=64, num_residual_blocks=2,
+                        or_operator=op, bias_initialization=lambda t: nn.init.normal_(t,mean=.5,std=.1)).to(device)
+                    check.load_state_dict(saved); check.eval()
+                    verify = evaluate(check, x, y)
+                    for mode in ("continuous", "hard", "boolean"):
+                        for metric in ("mse", "bit_accuracy", "exact_accuracy"):
+                            expected = record[mode][metric]
+                            actual = verify[mode][metric]
+                            if abs(actual - expected) > 1e-6:
+                                raise RuntimeError(f"checkpoint verification failed for {path}: {mode}.{metric} {actual} != {expected}")
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    checkpoint_manifest.append({"checkpoint": str(path), "sha256": digest, "epoch": epoch, "metrics": verify})
             # The Kaggle package contains source files only, so recreate the
             # result/checkpoint directory tree at runtime when needed.
             ckdir=OUT/"stage_b3_checkpoints"; ckdir.mkdir(parents=True, exist_ok=True)
@@ -163,6 +176,7 @@ def run(epochs=3000, seeds=(0,1,2), device=None, export_dir=None):
                 if best_bool is None or ev["boolean"]["exact_accuracy"]>best_bool["boolean"]["exact_accuracy"] or (ev["boolean"]["exact_accuracy"]==best_bool["boolean"]["exact_accuracy"] and mse<best_bool["continuous"]["mse"]): best_bool=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_boolean.pt"); save_verified("best_boolean_exact", epoch, rec)
                 if epoch==epochs: break
             save_verified("final", epochs, trajectory[-1])
+            flush_verified()
             model.load_state_dict(torch.load(ckdir/f"B3_{op}_seed{seed}_best_continuous.pt",weights_only=True))
             best_cont.update({"threshold_stability":threshold_report(model,x,y),"hardening":hardening_report(model,x,y)})
             if op in ("lehmer_p2","probabilistic_or"): best_cont["operator_gradient_report"]=lehmer_gradient_report(model,x) if op=="lehmer_p2" else []
