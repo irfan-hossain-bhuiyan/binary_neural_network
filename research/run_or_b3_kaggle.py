@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from run_or_b3 import OPS, run
+from research.run_or_b3 import OPS, run
 
 
 def main() -> None:
@@ -28,4 +28,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
