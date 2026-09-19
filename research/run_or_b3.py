@@ -32,7 +32,12 @@ def metrics(out, y):
 
 def evaluate(model, x, y, threshold=.5):
     with torch.no_grad():
-        cont = model(x); hard = model.forward_hard(x); boolean = model.to_discrete(threshold)(x.bool()).float()
+        cont = model(x)
+        hard = model.forward_hard(x)
+        # ``to_discrete`` constructs a fresh Boolean model; place it on the
+        # same device as the continuous model before evaluating CUDA inputs.
+        discrete = model.to_discrete(threshold).to(x.device)
+        boolean = discrete(x.bool()).float()
     return {"continuous": metrics(cont,y), "hard": metrics(hard,y), "boolean": metrics(boolean,y)}
 
 
