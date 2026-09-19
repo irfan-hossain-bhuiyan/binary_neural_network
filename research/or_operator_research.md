@@ -169,3 +169,40 @@ successful truth-table classifications.
 
 These are screening results, not a final operator ranking. The main four-bit
 XOR network and B2 tasks have not been launched.
+
+## Correction: Lehmer B1 OR4 numerical failure
+
+The original B1 run used a masked ratio implementation that evaluated
+`num/den` even when `den == 0`. Although `torch.where` selected the zero
+branch in the forward pass, autograd could retain a `0/0` NaN. Lehmer p=1 and
+p=2 OR4 trajectories showed this failure around epoch 50 and then collapsed;
+those results are retained as superseded diagnostics, not as valid operator
+rankings.
+
+The ratio now uses a safe denominator before division:
+
+```python
+mask = den > 0
+safe_den = torch.where(mask, den, torch.ones_like(den))
+ratio = num / safe_den
+return torch.where(mask, ratio, torch.zeros_like(ratio))
+```
+
+Zero and mixed-row backward regression tests now pass for Lehmer p=1, Lehmer
+p=2, log-hazard and odds-weighted means.
+
+### Lehmer OR4 rerun
+
+Only the contaminated cases were rerun: Lehmer p=1 and p=2, OR4, seeds 0, 1
+and 2, with the original 600-epoch configuration. No NaN gradients occurred.
+The corrected runs continued improving after epoch 50, but p=1 remained at
+best MSE `0.0702–0.1180` and exact accuracy `0.875` for all seeds. Lehmer p=2
+reached best MSE `0.00684` for seed 2 and reached continuous, hard and Boolean
+exact accuracy `1.0` at epoch 370; seeds 0 and 1 remained at exact accuracy
+`0.875` with best MSE around `0.118`. Thus the NaN bug invalidated the earlier
+collapse diagnosis, but it did not by itself make Lehmer p=1 reliably solve
+OR4 under this budget. The rerun record is
+`operator_results/stage_b1_lehmer_or4_rerun.json`.
+
+The next stage is B2 compositional truth-table tasks after reviewing this
+corrected result. B3 four-bit XOR and MNIST remain pending.

@@ -15,8 +15,12 @@ from torch import Tensor, nn
 
 
 def _zero_safe_ratio(num: Tensor, den: Tensor) -> Tensor:
-    out = torch.zeros_like(num)
-    return torch.where(den > 0, num / den, out)
+    # Do not evaluate num/den on the masked branch: autograd can retain the
+    # resulting 0/0 NaN even when torch.where selects the zero output.
+    mask = den > 0
+    safe_den = torch.where(mask, den, torch.ones_like(den))
+    ratio = num / safe_den
+    return torch.where(mask, ratio, torch.zeros_like(ratio))
 
 
 class OrSurrogate(nn.Module):

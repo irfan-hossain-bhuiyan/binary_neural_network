@@ -13,6 +13,8 @@ from or_surrogates import (
     LukasiewiczOr,
     ProbabilisticOr,
     SoftmaxWeightedValue,
+    OddsWeightedMean,
+    LogHazardWeightedMean,
     get_operator,
 )
 
@@ -74,6 +76,13 @@ def test_softmax_value_derivative_matches_autograd():
     p = torch.softmax(alpha * v.detach(), dim=-1)
     expected = p * (1 + alpha * (v.detach() - out.detach().unsqueeze(-1)))
     assert torch.allclose(grad, expected, atol=1e-10)
+
+
+@pytest.mark.parametrize("op", [LehmerMean(1), LehmerMean(2), LogHazardWeightedMean(), OddsWeightedMean()])
+def test_ratio_operators_have_finite_gradients_on_zero_and_mixed_rows(op):
+    v = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.25, 0.0]], dtype=torch.float64, requires_grad=True)
+    op(v).sum().backward()
+    assert torch.isfinite(v.grad).all()
 
 
 @pytest.mark.parametrize("op", [EinsteinOr(), HamacherOr(0), HamacherOr(0.5), HamacherOr(1)])

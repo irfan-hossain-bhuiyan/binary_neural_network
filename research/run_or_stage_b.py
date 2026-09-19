@@ -105,11 +105,11 @@ def task_data(task: str):
     raise ValueError(task)
 
 
-def train_b1(epochs: int = 600, seeds=(0, 1, 2)) -> dict:
+def train_b1(epochs: int = 600, seeds=(0, 1, 2), operators=OPS, tasks=("or4", "identity4", "not4")) -> dict:
     records = []
-    for task in ("or4", "identity4", "not4"):
+    for task in tasks:
         x, y = task_data(task)
-        for op_name in OPS:
+        for op_name in operators:
             for seed in seeds:
                 torch.manual_seed(seed)
                 layer = SigmoidOrLogicLayer(4, y.shape[1], op_name, gate_initialization=.5,
@@ -155,7 +155,17 @@ def plot_b1(records: list[dict]) -> None:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rerun-lehmer-or4", action="store_true")
+    args = parser.parse_args()
     OUT.mkdir(exist_ok=True); FIG.mkdir(exist_ok=True)
+    if args.rerun_lehmer_or4:
+        rerun = train_b1(operators=["lehmer_p1", "lehmer_p2"], tasks=("or4",))
+        with (OUT / "stage_b1_lehmer_or4_rerun.json").open("w") as f: json.dump({"experiment": "B1-Lehmer-OR4-rerun", "parent": "19dd4c4", "operators": ["lehmer_p1", "lehmer_p2"], "task": "or4", "results": rerun}, f, indent=2)
+        plot_b1(rerun)
+        print(json.dumps({"output": str(OUT / "stage_b1_lehmer_or4_rerun.json"), "runs": len(rerun)}, indent=2))
+        return
     b0 = train_b0(); b1 = train_b1()
     result = {"experiment": "Stage-B0-B1", "operators": OPS, "mse_milestones": MILESTONES, "b0": b0, "b1": b1}
     with (OUT / "stage_b_results.json").open("w") as f: json.dump(result, f, indent=2)
