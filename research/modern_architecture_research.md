@@ -1088,3 +1088,10 @@ Does the M002b gate distribution and soft-to-Boolean gap reproduce under a
 second seed with this exact committed config, or does seed 0 reflect a
 particular initialization trajectory? Run a replication seed before changing
 the operator, adding regularization, stochastic sampling, or moving to MNIST.
+
+# Operator study pointer
+
+The systematic differentiable OR-operator study is maintained separately in
+[`or_operator_research.md`](or_operator_research.md), with the pre-training
+property table in [`operator_candidates.md`](operator_candidates.md). The
+modern architecture results above, including M002b, remain unchanged.
