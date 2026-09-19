@@ -262,4 +262,52 @@ especially threshold-sensitive on full adder and multiplexer. Threshold
 stability is therefore useful evidence of discretization margin, not merely a
 post-hoc threshold choice.
 
-B2 is a screening phase. B3 exact four-bit XOR has not been started.
+## Stage B3 — exact 4-bit XOR on Kaggle
+
+B3 used the complete 256-row `bitwise_xor_truth_table` with the canonical
+`8 -> 64 -> two XOR-residual blocks -> 4` network. The four operators were
+Lehmer p=2, hard max, probabilistic OR, and softmax-value alpha=16. All runs
+used Adam (`lr=0.01`), MSE, batch size 256, 3000 epochs, no temperature,
+regularizer, or plateau noise. The verified CUDA result is archived at
+`operator_results/stage_b3_kaggle_v6.json` and was produced by Git SHA
+`a23ec4d900bf034129bd9a91158b1bd76e3f29c9` on Kaggle kernel version 6.
+
+| operator | seed | minimum continuous MSE | continuous exact | hard exact | Boolean exact | first Boolean recovery |
+|---|---:|---:|---:|---:|---:|---|
+| Lehmer p=2 | 0 | 2.11e-4 | 1.000 | 1.000 | 1.000 | epoch 375, MSE .0757 |
+| Lehmer p=2 | 1 | 2.06e-2 | 1.000 | .500 | .500 | not reached |
+| Lehmer p=2 | 2 | 2.18e-4 | 1.000 | 1.000 | 1.000 | epoch 375, MSE .0784 |
+| hard max | 0 | 6.32e-2 | .570 | .570 | .500 | not reached |
+| hard max | 1 | 8.84e-2 | .621 | .621 | .375 | not reached |
+| hard max | 2 | 6.32e-2 | .500 | .500 | .500 | not reached |
+| probabilistic OR | 0 | 9.83e-5 | 1.000 | .063 | 1.000 | epoch 200, MSE .0945 |
+| probabilistic OR | 1 | 1.00e-4 | 1.000 | .063 | 1.000 | epoch 200, MSE .0959 |
+| probabilistic OR | 2 | 9.67e-5 | 1.000 | .063 | 1.000 | epoch 200, MSE .0984 |
+| softmax value alpha=16 | 0 | 1.20e-2 | 1.000 | 1.000 | .500 | not reached |
+| softmax value alpha=16 | 1 | 1.37e-2 | .984 | .734 | .734 | not reached |
+| softmax value alpha=16 | 2 | 5.85e-2 | .898 | .484 | .156 | not reached |
+
+### B3 interpretation
+
+Lehmer p=2 is the strongest deterministic candidate but remains seed
+sensitive: two of three runs recover the exact Boolean XOR function, while
+the third reaches continuous exact accuracy without recovering the Boolean
+function. This is positive but not yet reliable evidence of functional
+discretization consistency. Probabilistic OR reaches continuous and
+thresholded Boolean exactness for all three seeds, but its hard-max outputs
+are poor (`.0625` exact); this separates the aggregation-semantic gap from
+the parameter-threshold result and confirms that classification alone is not
+enough. Hard max has the expected semantic control behavior but weak
+optimization. Softmax alpha=16 remains both less stable and less
+discretization-consistent than the leading candidates.
+
+The B3 Kaggle execution initially exposed three infrastructure bugs, all
+fixed in separate commits and preserved in history: direct-script import
+path (`88ab5a2`), missing packaged output directories (`8882f1d`), and CUDA
+device placement for the freshly created discrete model (`a23ec4d`). The
+first two failed kernel versions remain archived by Kaggle; version 6 is the
+first successful run.
+
+B3 is complete. The next experiment should be chosen after reviewing the
+seed-1 Lehmer p=2 failure and the probabilistic-OR hard/Boolean divergence;
+MNIST and further operator changes remain deferred.
