@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -99,11 +100,14 @@ def lehmer_gradient_report(model,x):
     return reports
 
 
-def run(epochs=3000, seeds=(0,1,2), device=None):
+def run(epochs=3000, seeds=(0,1,2), device=None, export_dir=None):
     task=build_task("bitwise_xor_truth_table",{"bits":4});
     device=torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     x,y=task["X"].to(device),task["Y"].to(device)
     all_results=[]
+    export_dir = Path(export_dir) if export_dir is not None else None
+    if export_dir is not None:
+        export_dir.mkdir(parents=True, exist_ok=True)
     for op in OPS:
         for seed in seeds:
             torch.manual_seed(seed)
@@ -111,6 +115,26 @@ def run(epochs=3000, seeds=(0,1,2), device=None):
                 bias_initialization=lambda t: nn.init.normal_(t,mean=.5,std=.1)).to(device)
             opt=torch.optim.Adam(model.parameters(),lr=.01)
             best_cont=None; best_hard=None; best_bool=None; milestones={}; trajectory=[]; first_bool=None; lowest_wrong=None
+            checkpoint_manifest=[]
+
+            def save_verified(label, epoch, record):
+                if export_dir is None:
+                    return
+                path = export_dir / f"B3R_{op}_seed{seed}_{label}.pt"
+                torch.save(model.state_dict(), path)
+                saved = torch.load(path, map_location=device, weights_only=True)
+                check = SigmoidOrModernLogicGateNet(8, 4, width=64, num_residual_blocks=2,
+                    or_operator=op, bias_initialization=lambda t: nn.init.normal_(t,mean=.5,std=.1)).to(device)
+                check.load_state_dict(saved); check.eval()
+                verify = evaluate(check, x, y)
+                for mode in ("continuous", "hard", "boolean"):
+                    for metric in ("mse", "bit_accuracy", "exact_accuracy"):
+                        expected = record[mode][metric]
+                        actual = verify[mode][metric]
+                        if abs(actual - expected) > 1e-6:
+                            raise RuntimeError(f"checkpoint verification failed for {path}: {mode}.{metric} {actual} != {expected}")
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                checkpoint_manifest.append({"checkpoint": str(path), "sha256": digest, "epoch": epoch, "metrics": verify})
             # The Kaggle package contains source files only, so recreate the
             # result/checkpoint directory tree at runtime when needed.
             ckdir=OUT/"stage_b3_checkpoints"; ckdir.mkdir(parents=True, exist_ok=True)
@@ -129,16 +153,20 @@ def run(epochs=3000, seeds=(0,1,2), device=None):
                 for m in MILESTONES:
                     if str(m) not in milestones and mse<m:
                         milestones[str(m)]=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_mse{m:.0e}.pt")
+                        save_verified(f"mse{m:.0e}", epoch, rec)
                 if first_bool is None and ev["boolean"]["exact_accuracy"]==1.0: first_bool={"epoch":epoch,"mse":mse}
+                if first_bool is not None and first_bool["epoch"] == epoch:
+                    save_verified("first_boolean_exact", epoch, rec)
                 if ev["boolean"]["exact_accuracy"]<1.0 and (lowest_wrong is None or mse<lowest_wrong["mse"]): lowest_wrong={"epoch":epoch,"mse":mse,"boolean":ev["boolean"]}
-                if best_cont is None or mse<best_cont["continuous"]["mse"]: best_cont=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_continuous.pt")
-                if best_hard is None or ev["hard"]["exact_accuracy"]>best_hard["hard"]["exact_accuracy"] or (ev["hard"]["exact_accuracy"]==best_hard["hard"]["exact_accuracy"] and mse<best_hard["continuous"]["mse"]): best_hard=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_hard.pt")
-                if best_bool is None or ev["boolean"]["exact_accuracy"]>best_bool["boolean"]["exact_accuracy"] or (ev["boolean"]["exact_accuracy"]==best_bool["boolean"]["exact_accuracy"] and mse<best_bool["continuous"]["mse"]): best_bool=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_boolean.pt")
+                if best_cont is None or mse<best_cont["continuous"]["mse"]: best_cont=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_continuous.pt"); save_verified("best_continuous_mse", epoch, rec)
+                if best_hard is None or ev["hard"]["exact_accuracy"]>best_hard["hard"]["exact_accuracy"] or (ev["hard"]["exact_accuracy"]==best_hard["hard"]["exact_accuracy"] and mse<best_hard["continuous"]["mse"]): best_hard=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_hard.pt"); save_verified("best_hard_exact", epoch, rec)
+                if best_bool is None or ev["boolean"]["exact_accuracy"]>best_bool["boolean"]["exact_accuracy"] or (ev["boolean"]["exact_accuracy"]==best_bool["boolean"]["exact_accuracy"] and mse<best_bool["continuous"]["mse"]): best_bool=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_boolean.pt"); save_verified("best_boolean_exact", epoch, rec)
                 if epoch==epochs: break
+            save_verified("final", epochs, trajectory[-1])
             model.load_state_dict(torch.load(ckdir/f"B3_{op}_seed{seed}_best_continuous.pt",weights_only=True))
             best_cont.update({"threshold_stability":threshold_report(model,x,y),"hardening":hardening_report(model,x,y)})
             if op in ("lehmer_p2","probabilistic_or"): best_cont["operator_gradient_report"]=lehmer_gradient_report(model,x) if op=="lehmer_p2" else []
-            all_results.append({"operator":op,"seed":seed,"epochs":epochs,"best_continuous":best_cont,"best_hard":best_hard,"best_boolean":best_bool,"first_boolean_recovery":first_bool,"lowest_mse_while_boolean_wrong":lowest_wrong,"milestones":milestones,"trajectory":trajectory})
+            all_results.append({"operator":op,"seed":seed,"epochs":epochs,"best_continuous":best_cont,"best_hard":best_hard,"best_boolean":best_bool,"first_boolean_recovery":first_bool,"lowest_mse_while_boolean_wrong":lowest_wrong,"milestones":milestones,"trajectory":trajectory,"checkpoint_manifest":checkpoint_manifest})
             print(op,seed,best_cont["continuous"]["mse"],best_cont["boolean"]["exact_accuracy"],first_bool,flush=True)
     return all_results
 

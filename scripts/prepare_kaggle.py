@@ -198,7 +198,8 @@ def main() -> None:
 
     if ENTRY:
         cmd = [sys.executable, ENTRY]
-        metrics_file = REPO_DIR / "b3_kaggle_metrics.json"
+        metrics_name = "b3r_kaggle_metrics.json" if ENTRY.endswith("b3r_kaggle.py") else "b3_kaggle_metrics.json"
+        metrics_file = REPO_DIR / metrics_name
     elif MODE == "suite":
         cmd = [sys.executable, "research/run_suite.py",
                "--suite", SUITE, "--seeds", SEEDS,
@@ -238,7 +239,7 @@ def main() -> None:
     # kernel outputs before removing the extracted source tree.
     checkpoint_dir = REPO_DIR / "artifacts" / "checkpoints"
     if checkpoint_dir.exists():
-        for checkpoint in checkpoint_dir.glob("*.pt"):
+        for checkpoint in checkpoint_dir.rglob("*.pt"):
             shutil.copy2(checkpoint, RESULT_PATH.parent / checkpoint.name)
     print(f"Wrote {RESULT_PATH}")
     # Remove the extracted source tree so `kaggle kernels output` only
