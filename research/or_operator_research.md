@@ -206,3 +206,60 @@ OR4 under this budget. The rerun record is
 
 The next stage is B2 compositional truth-table tasks after reviewing this
 corrected result. B3 four-bit XOR and MNIST remain pending.
+
+## Stage B2 — compositional truth tables
+
+B2 used the same sigmoid-edge layer and modern graph for every operator:
+
+```text
+input -> width 16 stem -> one two-layer XOR-residual block -> head
+```
+
+Each task used its complete truth table, Adam with learning rate `0.01`, MSE,
+no regularization, no noise, no temperature, 1000 epochs, and seeds 0, 1 and
+2. Tasks were `xor2`, `majority5`, `parity4`, `full_adder` and
+`multiplexer4`. The machine-readable archive is
+`operator_results/stage_b2_results.json`; consistency plots are
+`figures/stage_b2_consistency_*.png`.
+
+### Best exact accuracies by task and seed
+
+| task | hard max | Lehmer p=1 | Lehmer p=2 | log-hazard | probabilistic OR | softmax α=16 |
+|---|---|---|---|---|---|---|
+| XOR2 | 1.0, 1.0, 1.0 | 1.0, 1.0, 1.0 | 1.0, 1.0, 1.0 | 1.0, 1.0, 1.0 | .50, .50, .25 | 1.0, 1.0, 1.0 |
+| majority5 | .9375, .96875, .6875 | .8125, .9375, .9375 | .96875, .84375, .875 | .96875 each | 1.0, .50, 1.0 | .84375, .8125, .84375 |
+| parity4 | .75, .875, .9375 | .5625, .50, .50 | .5625, .6875, .50 | .625, .625, .50 | 1.0 each | .75, .875, .50 |
+| full_adder | .875, .875, 1.0 | .25, .75, .75 | .625, .875, 1.0 | .50, .625, .50 | .375, .875, .0 | .375, .875, .625 |
+| multiplexer4 | .8125, .96875, .75 | .8125, .5625, .84375 | 1.0, .90625, 1.0 | .953125, .796875, .9375 | 1.0, .50, .50 | .9375, .765625, .78125 |
+
+### Interpretation
+
+- XOR2 was solved by every semantic/smooth control except probabilistic OR,
+  whose best continuous MSE was low but whose thresholded Boolean circuit was
+  wrong for all three seeds. This is an early example of continuous loss and
+  Boolean function disagreement.
+- Probabilistic OR solved parity4 for all seeds and majority5 for two seeds,
+  but was unstable on full adder and multiplexer. Its many-fractional-input
+  accumulation remains a real compositional risk.
+- Lehmer p=2 was the strongest Lehmer candidate: it reached exact
+  multiplexer recovery for seeds 0 and 2 and full-adder recovery for seed 2.
+  It did not solve parity4 reliably.
+- Lehmer p=1 was weaker than p=2 on these compositional tasks and did not
+  reach exact full-adder or multiplexer recovery.
+- Log-hazard gave stable majority5 results near `.96875`, but did not solve
+  parity4 or full adder.
+- Hard max remains a useful semantic/gradient control: it occasionally
+  recovers exact functions, but has high seed variability and does not
+  dominate smooth candidates.
+
+### Threshold stability
+
+Every best checkpoint was evaluated at thresholds `0.3, 0.4, 0.45, 0.5,
+0.55, 0.6, 0.7`. XOR2 solutions from hard max, Lehmer, log-hazard and
+softmax remained exact across all thresholds. For the harder tasks, most
+checkpoints did not remain exact across the interval; probabilistic OR was
+especially threshold-sensitive on full adder and multiplexer. Threshold
+stability is therefore useful evidence of discretization margin, not merely a
+post-hoc threshold choice.
+
+B2 is a screening phase. B3 exact four-bit XOR has not been started.
