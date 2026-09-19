@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+import sys
 import traceback
 from pathlib import Path
 
 import torch
+
+# Kaggle executes this file directly, so Python initially puts only the
+# ``research`` directory on sys.path.  Add the packaged repository root so
+# imports work both locally and in the remote kernel.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
 from research.run_or_b3 import OPS, run
 
