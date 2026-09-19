@@ -289,6 +289,15 @@ def main() -> None:
     short_commit = run_git(["rev-parse", "--short", "HEAD"], root)
 
     files = select_files(root)
+    if args.entry:
+        # Custom research entries should not upload the historical report and
+        # result archives. They remain tracked locally; this keeps the Kaggle
+        # kernel source body small enough for SaveKernel.
+        files = [
+            path for path in files
+            if Path(path).suffix.lower() == ".py"
+            or path == "kaggle/kernel-metadata.json"
+        ]
     if not files:
         print("ERROR: no source files selected for packaging.", file=sys.stderr)
         sys.exit(1)
