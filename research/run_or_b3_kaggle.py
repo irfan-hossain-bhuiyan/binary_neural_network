@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -22,6 +23,14 @@ def main() -> None:
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         results = run(epochs=3000, seeds=(0, 1, 2), device=device)
+        # The Kaggle bootstrap exports this directory after the entry point
+        # returns.  Keep the exact B3 checkpoints available for no-retraining
+        # forensic analysis instead of losing them with the source tree.
+        source_checkpoints = Path("research/operator_results/stage_b3_checkpoints")
+        export_checkpoints = Path("artifacts/checkpoints")
+        export_checkpoints.mkdir(parents=True, exist_ok=True)
+        for checkpoint in source_checkpoints.glob("*.pt"):
+            shutil.copy2(checkpoint, export_checkpoints / checkpoint.name)
         payload = {
             "experiment": "B3-exact-4bit-XOR",
             "operators": OPS,
