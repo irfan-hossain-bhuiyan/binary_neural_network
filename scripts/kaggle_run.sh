@@ -28,6 +28,7 @@ KAGGLE_MODE="${KAGGLE_MODE:-single}"
 SUITE="${SUITE:-baseline_suite}"
 SEEDS="${SEEDS:-0}"
 CONFIG="${CONFIG:-research/configs/baseline.json}"
+ENTRY="${ENTRY:-}"
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -51,7 +52,11 @@ fi
 if [ "$KAGGLE_MODE" = "suite" ]; then
     python scripts/prepare_kaggle.py --mode suite --suite "$SUITE" --seeds "$SEEDS"
 else
-    python scripts/prepare_kaggle.py --mode single --config "$CONFIG"
+    if [ -n "$ENTRY" ]; then
+        python scripts/prepare_kaggle.py --mode single --config "$CONFIG" --entry "$ENTRY"
+    else
+        python scripts/prepare_kaggle.py --mode single --config "$CONFIG"
+    fi
 fi
 
 test -f "$GENERATED"

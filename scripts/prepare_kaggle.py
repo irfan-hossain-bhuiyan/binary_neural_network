@@ -172,6 +172,7 @@ MODE = "__MODE__"
 SUITE = "__SUITE__"
 SEEDS = "__SEEDS__"
 CONFIG = "__CONFIG__"
+ENTRY = "__ENTRY__"
 
 ARCHIVE_B64 = """__ARCHIVE_B64__"""
 
@@ -195,7 +196,10 @@ def main() -> None:
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
         tar.extractall(path=str(REPO_DIR))
 
-    if MODE == "suite":
+    if ENTRY:
+        cmd = [sys.executable, ENTRY]
+        metrics_file = REPO_DIR / "b3_kaggle_metrics.json"
+    elif MODE == "suite":
         cmd = [sys.executable, "research/run_suite.py",
                "--suite", SUITE, "--seeds", SEEDS,
                "--output", "suite_metrics.json"]
@@ -270,6 +274,8 @@ def main() -> None:
                         help="comma-separated seeds for --mode suite")
     parser.add_argument("--config", default="research/configs/baseline.json",
                         help="config for --mode single")
+    parser.add_argument("--entry", default="",
+                        help="custom committed Python entry point")
     args = parser.parse_args()
 
     root = Path(
@@ -312,6 +318,7 @@ def main() -> None:
         .replace("__SUITE__", args.suite)
         .replace("__SEEDS__", args.seeds)
         .replace("__CONFIG__", args.config)
+        .replace("__ENTRY__", args.entry)
         .replace("__ARCHIVE_B64__", b64)
     )
     out_path = root / GENERATED_BOOTSTRAP
