@@ -133,3 +133,27 @@ The B3R machine-readable forensic output is
 `operator_results/b3r_forensic_analysis.json`. Figures are in `figures/`:
 `b3_lehmer_seed_comparison.png`, `b3_layer_hardening.png`,
 `b3_functional_threshold_margin.png`, and `b3_prob_or_accumulation.png`.
+
+## B3R v3 provenance-corrected rerun
+
+After correcting the analyzer and export path, B3R v3 was run from
+`c5a84b531c50f1cc6eb9b85ce1dd43528bba5b0b` on Kaggle kernel version 3. The
+result is `operator_results/stage_b3r_v3_results.json`, the manifest is
+`operator_results/stage_b3r_v3_checkpoint_manifest.json`, and checkpoints are
+under `artifacts/checkpoints/B3R_v3/`. The analyzer was invoked with explicit
+`--results` and `--checkpoints` arguments and verified all 65 checkpoint
+hashes and reloaded metrics.
+
+The per-25-epoch Lehmer sign trajectory adds a useful qualification. Seeds 0
+and 2 become exact at epoch 375, while seed 1 remains at exact accuracy .5.
+Seed 1 does not differ at the first transition alone: at epoch 375 its
+block0.layer1 negative fraction is .247 and block0.layer2 is .001, similar
+to successful seeds. Its failure develops later: by epoch 1500 the negative
+fractions rise to .946 in block0.layer1, .921 in block1.layer1, and .610 in
+block1.layer2, while the loss stalls near .022. At epoch 3000 those values
+remain .935, .842, and .651. This supports a late basin/stall diagnosis and
+rules out a simple claim that a high negative-gradient fraction was already
+present before the successful epoch-375 transition.
+
+The corrected analyzer now reports all contiguous functional threshold
+intervals, residual activation rows, and Boolean per-output-bit accuracy.

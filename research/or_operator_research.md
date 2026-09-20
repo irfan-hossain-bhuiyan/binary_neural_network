@@ -337,3 +337,22 @@ original floating-point weights; it reproduces the operator-level phenomena.
 
 B3D forensic results are documented separately in
 `research/b3_forensic_analysis.md`.
+
+### B3R v3 provenance-corrected archive
+
+B3R v3 reran the unchanged historical B3 training loop after separating the
+checkpoint directory and correcting manifest validation. It used commit
+`c5a84b531c50f1cc6eb9b85ce1dd43528bba5b0b` on Kaggle kernel version 3. The
+65 checkpoint files, SHA-256 manifest, and result JSON are archived as:
+
+```text
+artifacts/checkpoints/B3R_v3/
+research/operator_results/stage_b3r_v3_checkpoint_manifest.json
+research/operator_results/stage_b3r_v3_results.json
+research/operator_results/b3r_v3_forensic_analysis.json
+```
+
+The B3R v3 operator outcomes match B3R v2 and historical B3 at the recorded
+metrics. The new trajectory diagnostics show that Lehmer seed 1 enters its
+high-negative-gradient stalled regime after the successful epoch-375
+transition, rather than before it.
