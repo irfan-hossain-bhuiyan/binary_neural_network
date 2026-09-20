@@ -8,6 +8,8 @@ and four diagnostic figures used by ``b3_forensic_analysis.md``.
 from __future__ import annotations
 
 import json
+import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from research.boolean_tasks import build_task  # noqa: E402
 
 OUT = ROOT / "research" / "operator_results"
 CK = ROOT / "artifacts" / "checkpoints" / "B3R"
+RESULTS_PATH = ROOT / "research" / "operator_results" / "stage_b3r_results.json"
 FIG = ROOT / "research" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
 OPS = ("lehmer_p2", "probabilistic_or")
@@ -37,10 +40,10 @@ def model_for(op: str) -> SigmoidOrModernLogicGateNet:
     )
 
 
-def load_model(op: str, seed: int, suffix: str = "best_continuous"):
+def load_model(op: str, seed: int, suffix: str = "best_continuous", checkpoint_dir: Path | None = None):
     model = model_for(op)
     suffix = {"best_continuous": "best_continuous_mse", "best_hard": "best_hard_exact", "best_boolean": "best_boolean_exact"}.get(suffix, suffix)
-    path = CK / f"B3R_{op}_seed{seed}_{suffix}.pt"
+    path = (checkpoint_dir or CK) / f"B3R_{op}_seed{seed}_{suffix}.pt"
     model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
     model.eval()
     return model, path
@@ -95,9 +98,11 @@ def discrete_trace(model, x, threshold):
         if name == "block0.layer2":
             start = residual_inputs["block0"]
             h = start ^ y
+            rows.append(("block0.residual", start, h))
         elif name == "block1.layer2":
             start = residual_inputs["block1"]
             h = start ^ y
+            rows.append(("block1.residual", start, h))
     return rows, d
 
 
@@ -186,17 +191,28 @@ def metrics(out, y):
 def output_report(model, x, y):
     with torch.no_grad():
         c, h = model(x), model.forward_hard(x)
-    result = {"continuous": metrics(c, y), "hard": metrics(h, y), "bits": {}}
+    with torch.no_grad():
+        b = model.to_discrete(.5)(x.bool()).float()
+    result = {"continuous": metrics(c, y), "hard": metrics(h, y), "boolean": metrics(b, y), "bits": {}}
     for i in range(4):
         result["bits"][str(i)] = {
             "continuous": float(((c[:, i] >= .5) == (y[:, i] >= .5)).float().mean()),
             "hard": float(((h[:, i] >= .5) == (y[:, i] >= .5)).float().mean()),
+            "boolean": float(((b[:, i] >= .5) == (y[:, i] >= .5)).float().mean()),
         }
     for t in THRESHOLDS:
         with torch.no_grad():
             result.setdefault("thresholds", {})[str(t)] = metrics(model.to_discrete(t)(x.bool()).float(), y)
     exact_ts = [t for t in THRESHOLDS if result["thresholds"][str(t)]["exact"] == 1.0]
-    result["functional_threshold_interval"] = [min(exact_ts), max(exact_ts)] if exact_ts else None
+    runs=[]; current=[]
+    for t in THRESHOLDS:
+        if t in exact_ts:
+            current.append(t)
+        elif current:
+            runs.append(current); current=[]
+    if current: runs.append(current)
+    result["functional_threshold_intervals"] = [[run[0], run[-1]] for run in runs]
+    result["functional_threshold_interval"] = max(result["functional_threshold_intervals"], key=lambda z: z[1]-z[0], default=None)
     return result
 
 
@@ -273,8 +289,8 @@ def accumulation_report(model, x):
     return result
 
 
-def analyze_one(op, seed, x, y):
-    model, path = load_model(op, seed)
+def analyze_one(op, seed, x, y, checkpoint_dir):
+    model, path = load_model(op, seed, checkpoint_dir=checkpoint_dir)
     return {
         "checkpoint": str(path), "output": output_report(model, x, y),
         "contributions": contribution_report(model, x), "lehmer_gradients": lehmer_report(model, x),
@@ -284,22 +300,29 @@ def analyze_one(op, seed, x, y):
     }
 
 
-def verify_canonical_checkpoints(x, y):
-    """Reject stale local checkpoints before producing a canonical report."""
-    archive = json.loads((OUT / "stage_b3r_results.json").read_text())
-    expected = {
-        (r["operator"], r["seed"]): r["best_continuous"]["continuous"]["mse"]
-        for r in archive["metrics"]["results"]
-    }
-    for (op, seed), target in expected.items():
-        model, path = load_model(op, seed)
-        observed = float((model(x) - y).square().mean())
-        if abs(observed - target) > max(1e-6, abs(target) * 1e-3):
-            raise RuntimeError(
-                f"checkpoint provenance mismatch for {path}: observed MSE "
-                f"{observed:.9g}, canonical Kaggle MSE {target:.9g}. "
-                "Export and verify the B3R checkpoints before analysis."
-            )
+def verify_checkpoints(results_path, checkpoint_dir, x, y):
+    """Verify hashes and metrics against the supplied B3R result JSON only."""
+    archive = json.loads(results_path.read_text())
+    results = archive.get("metrics", archive)["results"]
+    entries = [entry for result in results for entry in result.get("checkpoint_manifest", [])]
+    if not entries:
+        raise RuntimeError("B3R result JSON has no checkpoint manifest")
+    for entry in entries:
+        path = checkpoint_dir / Path(entry["checkpoint"]).name
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != entry["sha256"]:
+            raise RuntimeError(f"checkpoint hash mismatch: {path}")
+        model = model_for(entry["operator"])
+        model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True)); model.eval()
+        observed = output_report(model, x, y)
+        expected = entry["metrics"]
+        for mode in ("continuous", "hard", "boolean"):
+            for metric in ("mse", "bit_accuracy", "exact_accuracy"):
+                actual = observed[mode][{"bit_accuracy": "bit", "exact_accuracy": "exact"}.get(metric, "mse")]
+                if abs(actual - expected[mode][metric]) > 1e-6:
+                    raise RuntimeError(f"checkpoint metric mismatch: {path} {mode}.{metric}")
 
 
 def make_figures(all_data):
@@ -338,13 +361,20 @@ def make_figures(all_data):
 
 
 def main():
+    global CK
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--results", type=Path, default=RESULTS_PATH)
+    parser.add_argument("--checkpoints", type=Path, default=CK)
+    parser.add_argument("--output", type=Path, default=OUT / "b3r_forensic_analysis.json")
+    args = parser.parse_args()
+    CK = args.checkpoints
     x, y = task_data()
-    verify_canonical_checkpoints(x, y)
-    data = {op: {str(s): analyze_one(op, s, x, y) for s in SEEDS} for op in OPS}
+    verify_checkpoints(args.results, args.checkpoints, x, y)
+    data = {op: {str(s): analyze_one(op, s, x, y, args.checkpoints) for s in SEEDS} for op in OPS}
     # Parameter-level distance is useful context, but functional-layer
     # diagnostics in the report remain the primary comparison.
     for op in OPS:
-        models = {s: load_model(op, s)[0] for s in SEEDS}
+        models = {s: load_model(op, s, checkpoint_dir=args.checkpoints)[0] for s in SEEDS}
         pairwise = {}
         for i, a in enumerate(SEEDS):
             for b in SEEDS[i + 1:]:
@@ -354,7 +384,7 @@ def main():
                     distance += int(torch.count_nonzero((la.actual_bias() >= .5) ^ (lb.actual_bias() >= .5)))
                 pairwise[f"seed{a}_vs_seed{b}"] = distance
         data[op]["pairwise_parameter_hamming"] = pairwise
-    out = OUT / "b3r_forensic_analysis.json"
+    out = args.output
     out.write_text(json.dumps(data, indent=2))
     make_figures(data)
     print(json.dumps({"output": str(out), "figures": [str(FIG / n) for n in ("b3_lehmer_seed_comparison.png", "b3_layer_hardening.png", "b3_functional_threshold_margin.png", "b3_prob_or_accumulation.png")]}, indent=2))

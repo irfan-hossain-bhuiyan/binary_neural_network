@@ -237,10 +237,21 @@ def main() -> None:
     RESULT_PATH.write_text(json.dumps(result, indent=2))
     # Preserve explicitly requested research checkpoints as downloadable
     # kernel outputs before removing the extracted source tree.
-    checkpoint_dir = REPO_DIR / "artifacts" / "checkpoints"
-    if checkpoint_dir.exists():
-        for checkpoint in checkpoint_dir.rglob("*.pt"):
+    checkpoint_manifest = REPO_DIR / "b3r_checkpoint_manifest.json"
+    if checkpoint_manifest.exists():
+        manifest = json.loads(checkpoint_manifest.read_text())
+        for item in manifest.get("checkpoints", []):
+            relative = Path(item["checkpoint"])
+            checkpoint = REPO_DIR / relative
+            if not checkpoint.is_file():
+                raise FileNotFoundError(f"manifest checkpoint is missing: {checkpoint}")
             shutil.copy2(checkpoint, RESULT_PATH.parent / checkpoint.name)
+        shutil.copy2(checkpoint_manifest, RESULT_PATH.parent / checkpoint_manifest.name)
+    else:
+        checkpoint_dir = REPO_DIR / "artifacts" / "checkpoints"
+        if checkpoint_dir.exists():
+            for checkpoint in checkpoint_dir.glob("*.pt"):
+                shutil.copy2(checkpoint, RESULT_PATH.parent / checkpoint.name)
     print(f"Wrote {RESULT_PATH}")
     # Remove the extracted source tree so `kaggle kernels output` only
     # downloads result.json (kept on failure for debugging).

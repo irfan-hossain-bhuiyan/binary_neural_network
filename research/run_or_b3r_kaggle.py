@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import platform
 import random
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -33,7 +34,22 @@ def main() -> None:
         if np is not None:
             np.random.seed(seed)
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        results = run(epochs=3000, seeds=(0, 1, 2), device=device, export_dir="artifacts/checkpoints")
+        source_dir = Path("research/operator_results/stage_b3r_checkpoints")
+        export_dir = Path("artifacts/checkpoints/B3R")
+        shutil.rmtree(source_dir, ignore_errors=True)
+        shutil.rmtree(export_dir, ignore_errors=True)
+        results = run(epochs=3000, seeds=(0, 1, 2), device=device, export_dir=source_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        manifest = []
+        for result in results:
+            for entry in result["checkpoint_manifest"]:
+                source = Path(entry["checkpoint"])
+                destination = export_dir / source.name
+                shutil.copy2(source, destination)
+                item = dict(entry)
+                item["checkpoint"] = str(Path("artifacts/checkpoints/B3R") / source.name)
+                manifest.append(item)
+        Path("b3r_checkpoint_manifest.json").write_text(json.dumps({"experiment": "B3R", "checkpoints": manifest}, indent=2))
         payload = {
             "experiment": "B3R-checkpoint-export-replication",
             "parent_experiment": "B3-exact-4bit-XOR",

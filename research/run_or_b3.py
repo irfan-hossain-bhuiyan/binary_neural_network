@@ -147,10 +147,13 @@ def run(epochs=3000, seeds=(0,1,2), device=None, export_dir=None):
                             if abs(actual - expected) > 1e-6:
                                 raise RuntimeError(f"checkpoint verification failed for {path}: {mode}.{metric} {actual} != {expected}")
                     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                    checkpoint_manifest.append({"checkpoint": str(path), "sha256": digest, "epoch": epoch, "metrics": verify})
+                    checkpoint_manifest.append({"checkpoint": str(path), "sha256": digest, "epoch": epoch, "operator": op, "seed": seed, "kind": label, "metrics": verify})
             # The Kaggle package contains source files only, so recreate the
             # result/checkpoint directory tree at runtime when needed.
-            ckdir=OUT/"stage_b3_checkpoints"; ckdir.mkdir(parents=True, exist_ok=True)
+            ckdir=(OUT/"stage_b3r_checkpoints" if export_dir is not None else OUT/"stage_b3_checkpoints"); ckdir.mkdir(parents=True, exist_ok=True)
+            # Historical B3 semantics are intentionally preserved: epochs=3000
+            # performs 3001 optimizer updates, and the record labelled epoch 0
+            # is post-update. A future generation may correct this separately.
             for epoch in range(epochs+1):
                 out=model(x); loss=(out-y).square().mean(); opt.zero_grad(); loss.backward(); opt.step()
                 # Full hard/Boolean conversion and gate diagnostics are sampled
@@ -161,23 +164,41 @@ def run(epochs=3000, seeds=(0,1,2), device=None, export_dir=None):
                     if epoch==epochs: break
                     continue
                 ev=evaluate(model,x,y); rec={"epoch":epoch,**ev,"gate_stats":gate_stats(model),"parameter_grad_norm":float(torch.linalg.vector_norm(torch.cat([p.grad.detach().flatten() for p in model.parameters() if p.grad is not None])))}
+                if op == "lehmer_p2":
+                    # Diagnostic only: this does not participate in the loss
+                    # or optimizer and records the sign geometry every 25
+                    # epochs for B3D basin analysis.
+                    rec["lehmer_gradient_report"] = lehmer_gradient_report(model, x)
                 trajectory.append(rec)
                 mse=ev["continuous"]["mse"]
                 for m in MILESTONES:
                     if str(m) not in milestones and mse<m:
-                        milestones[str(m)]=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_mse{m:.0e}.pt")
+                        milestones[str(m)]=copy.deepcopy(rec)
+                        if export_dir is None: torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_mse{m:.0e}.pt")
                         save_verified(f"mse{m:.0e}", epoch, rec)
                 if first_bool is None and ev["boolean"]["exact_accuracy"]==1.0: first_bool={"epoch":epoch,"mse":mse}
                 if first_bool is not None and first_bool["epoch"] == epoch:
                     save_verified("first_boolean_exact", epoch, rec)
                 if ev["boolean"]["exact_accuracy"]<1.0 and (lowest_wrong is None or mse<lowest_wrong["mse"]): lowest_wrong={"epoch":epoch,"mse":mse,"boolean":ev["boolean"]}
-                if best_cont is None or mse<best_cont["continuous"]["mse"]: best_cont=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_continuous.pt"); save_verified("best_continuous_mse", epoch, rec)
-                if best_hard is None or ev["hard"]["exact_accuracy"]>best_hard["hard"]["exact_accuracy"] or (ev["hard"]["exact_accuracy"]==best_hard["hard"]["exact_accuracy"] and mse<best_hard["continuous"]["mse"]): best_hard=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_hard.pt"); save_verified("best_hard_exact", epoch, rec)
-                if best_bool is None or ev["boolean"]["exact_accuracy"]>best_bool["boolean"]["exact_accuracy"] or (ev["boolean"]["exact_accuracy"]==best_bool["boolean"]["exact_accuracy"] and mse<best_bool["continuous"]["mse"]): best_bool=copy.deepcopy(rec); torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_boolean.pt"); save_verified("best_boolean_exact", epoch, rec)
+                if best_cont is None or mse<best_cont["continuous"]["mse"]:
+                    best_cont=copy.deepcopy(rec)
+                    if export_dir is None: torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_continuous.pt")
+                    save_verified("best_continuous_mse", epoch, rec)
+                if best_hard is None or ev["hard"]["exact_accuracy"]>best_hard["hard"]["exact_accuracy"] or (ev["hard"]["exact_accuracy"]==best_hard["hard"]["exact_accuracy"] and mse<best_hard["continuous"]["mse"]):
+                    best_hard=copy.deepcopy(rec)
+                    if export_dir is None: torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_hard.pt")
+                    save_verified("best_hard_exact", epoch, rec)
+                if best_bool is None or ev["boolean"]["exact_accuracy"]>best_bool["boolean"]["exact_accuracy"] or (ev["boolean"]["exact_accuracy"]==best_bool["boolean"]["exact_accuracy"] and mse<best_bool["continuous"]["mse"]):
+                    best_bool=copy.deepcopy(rec)
+                    if export_dir is None: torch.save(model.state_dict(),ckdir/f"B3_{op}_seed{seed}_best_boolean.pt")
+                    save_verified("best_boolean_exact", epoch, rec)
                 if epoch==epochs: break
             save_verified("final", epochs, trajectory[-1])
             flush_verified()
-            model.load_state_dict(torch.load(ckdir/f"B3_{op}_seed{seed}_best_continuous.pt",weights_only=True))
+            if export_dir is None:
+                model.load_state_dict(torch.load(ckdir/f"B3_{op}_seed{seed}_best_continuous.pt",weights_only=True))
+            else:
+                model.load_state_dict({k: v.to(device) for k, v in pending_checkpoints["best_continuous_mse"][2].items()})
             best_cont.update({"threshold_stability":threshold_report(model,x,y),"hardening":hardening_report(model,x,y)})
             if op in ("lehmer_p2","probabilistic_or"): best_cont["operator_gradient_report"]=lehmer_gradient_report(model,x) if op=="lehmer_p2" else []
             all_results.append({"operator":op,"seed":seed,"epochs":epochs,"best_continuous":best_cont,"best_hard":best_hard,"best_boolean":best_bool,"first_boolean_recovery":first_bool,"lowest_mse_while_boolean_wrong":lowest_wrong,"milestones":milestones,"trajectory":trajectory,"checkpoint_manifest":checkpoint_manifest})
