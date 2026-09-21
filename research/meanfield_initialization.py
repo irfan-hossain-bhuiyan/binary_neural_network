@@ -63,3 +63,14 @@ def bias_one_normal_init_(bias: torch.Tensor, std: float = 0.1, generator: torch
     with torch.no_grad():
         bias.normal_(mean=1.0, std=std, generator=generator)
 
+
+def gaussian_bias_init_(
+    bias: torch.Tensor,
+    mean: float,
+    std: float,
+    generator: torch.Generator | None = None,
+) -> None:
+    """Fill a bias tensor from ``Normal(mean, std**2)`` using explicit RNG."""
+    with torch.no_grad():
+        z = torch.empty_like(bias).normal_(mean=0.0, std=1.0, generator=generator)
+        bias.copy_(mean + std * z)
