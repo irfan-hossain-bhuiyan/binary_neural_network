@@ -157,3 +157,25 @@ present before the successful epoch-375 transition.
 
 The corrected analyzer now reports all contiguous functional threshold
 intervals, residual activation rows, and Boolean per-output-bit accuracy.
+
+## B3R seed-1 continuation
+
+A controlled continuation resumed the verified B3R v3 Lehmer p=2 seed-1
+best-continuous checkpoint for 3000 additional updates with the same Adam
+learning rate, MSE, topology, and initialization semantics. Kaggle kernel
+`binary-neural-network-b3r-cont` version 2 completed from commit
+`ddcf0f601e041372b0e6f8fbe385215adfe99dda`.
+
+The basin did not recover:
+
+| state | continuous MSE | Boolean exact |
+|---|---:|---:|
+| continuation start | .0206271 | .500 |
+| best after 3000 updates | .0200449 | .500 |
+| final | .0200449 | .500 |
+
+Continuous exact accuracy remained 1.0, while hard exact and Boolean exact
+remained .5. This classifies the seed-1 result as a persistent optimization
+basin/stall under the unchanged training rule, rather than a temporary lack
+of training time. The continuation did not introduce a new architecture or
+optimizer hypothesis.

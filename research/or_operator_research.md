@@ -356,3 +356,12 @@ The B3R v3 operator outcomes match B3R v2 and historical B3 at the recorded
 metrics. The new trajectory diagnostics show that Lehmer seed 1 enters its
 high-negative-gradient stalled regime after the successful epoch-375
 transition, rather than before it.
+
+## B3R seed-1 continuation
+
+The recommended unchanged continuation was run for 3000 additional updates
+from the verified B3R v3 seed-1 best-continuous checkpoint. The result is
+`operator_results/b3r_seed1_continuation_v2_results.json`, with continuation
+checkpoints under `artifacts/checkpoints/B3R_continuation_v2/`. MSE improved
+only from `.0206271` to `.0200449`; Boolean exact accuracy remained `.5`.
+The failed basin therefore persisted under the original training rule.
