@@ -159,6 +159,7 @@ Regenerate with: python scripts/prepare_kaggle.py [--mode suite --suite ... --se
 import base64
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -167,6 +168,7 @@ import traceback
 from pathlib import Path
 
 COMMIT = "__COMMIT__"
+os.environ["RESEARCH_GIT_SHA"] = COMMIT
 
 MODE = "__MODE__"
 SUITE = "__SUITE__"

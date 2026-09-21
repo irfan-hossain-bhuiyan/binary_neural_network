@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -132,7 +133,12 @@ def main() -> None:
         prefix="I2F",
         paired_check=paired_check,
     )
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    sha = os.environ.get("RESEARCH_GIT_SHA")
+    if not sha:
+        try:
+            sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        except subprocess.CalledProcessError:
+            sha = "unknown"
     payload = {
         "experiment": "I2F-missing-initialization-factorial",
         "git_sha": sha,
