@@ -22,7 +22,10 @@ BIAS_SPECS = {"CURRENT": (0.5, 0.1), "ONE": (1.0, 0.1), "BALANCED_POLARIZED": (0
 
 
 def generator(seed: int, device: torch.device) -> torch.Generator:
-    return torch.Generator(device=device).manual_seed(int(seed))
+    # PyTorch's in-place normal_ initializer on CUDA expects a CPU generator
+    # in the supported Kaggle runtime. Initialization tensors are copied to
+    # their target device once; propagation remains entirely on that device.
+    return torch.Generator(device="cpu").manual_seed(int(seed))
 
 
 def controlled_binary(n: int, d: int, p_zero: float, seed: int, device: torch.device) -> torch.Tensor:
