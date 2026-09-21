@@ -22,7 +22,7 @@ from research import run_initialization_i2 as base
 
 OUT = ROOT / "research" / "operator_results"
 CHECKPOINTS = OUT / "initialization_i2f_checkpoints"
-EXISTING_I2 = OUT / "initialization_i2_results.json"
+PAIRING_REFERENCE = ROOT / "research" / "configs" / "initialization_i2_pairing_reference.json"
 
 CONDITIONS = {
     "I2-F": {"name": "historical_one", "edge": "historical", "bias": "ONE"},
@@ -61,8 +61,11 @@ def paired_bias_init(name: str, seed: int):
 
 def paired_check(condition: str, seed: int, device: torch.device) -> None:
     """Assert pairing against the archived I2 initial masks and new cells."""
-    old = json.loads(EXISTING_I2.read_text())
-    rows = {(row["condition"], int(row["seed"])): row for row in old["results"]}
+    reference = json.loads(PAIRING_REFERENCE.read_text())
+    rows = {
+        (key.split(":")[0], int(key.split("seed")[1])): value
+        for key, value in reference["initial_masks"].items()
+    }
 
     model = base.model_for(condition, seed, device)
     edge_hash = base.mask_hash(model)
@@ -71,7 +74,7 @@ def paired_check(condition: str, seed: int, device: torch.device) -> None:
     if condition in ("I2-F", "I2-G"):
         other = base.model_for("I2-G" if condition == "I2-F" else "I2-F", seed, device)
         assert edge_hash == base.mask_hash(other), f"historical edge pairing failed seed={seed}"
-        assert edge_hash == rows[("I2-A", seed)]["initialization"]["edge_mask_sha256"]
+        assert edge_hash == rows[("I2-A", seed)]["edge_mask_sha256"]
         if condition == "I2-G":
             # BALANCED_POLARIZED is paired with a CURRENT Gaussian probe
             # using the same standard-normal draws.  I2-A intentionally
@@ -83,8 +86,8 @@ def paired_check(condition: str, seed: int, device: torch.device) -> None:
             ).to(device)
             assert bias_hash == base.mask_hash(paired_current, True), f"balanced/current bias pairing failed seed={seed}"
     elif condition == "I2-H":
-        assert edge_hash == rows[("I2-B", seed)]["initialization"]["edge_mask_sha256"]
-        assert edge_hash == rows[("I2-D", seed)]["initialization"]["edge_mask_sha256"]
+        assert edge_hash == rows[("I2-B", seed)]["edge_mask_sha256"]
+        assert edge_hash == rows[("I2-D", seed)]["edge_mask_sha256"]
         paired = base.SigmoidOrModernLogicGateNet(
             8, 4, width=64, num_residual_blocks=2, or_operator="lehmer_p2",
             gate_initializations=[.5] * 6,
@@ -93,8 +96,8 @@ def paired_check(condition: str, seed: int, device: torch.device) -> None:
         ).to(device)
         assert bias_hash == base.mask_hash(paired, True), f"MF sigma2 bias stream mismatch seed={seed}"
     elif condition == "I2-I":
-        assert edge_hash == rows[("I2-C", seed)]["initialization"]["edge_mask_sha256"]
-        assert edge_hash == rows[("I2-E", seed)]["initialization"]["edge_mask_sha256"]
+        assert edge_hash == rows[("I2-C", seed)]["edge_mask_sha256"]
+        assert edge_hash == rows[("I2-E", seed)]["edge_mask_sha256"]
         paired = base.SigmoidOrModernLogicGateNet(
             8, 4, width=64, num_residual_blocks=2, or_operator="lehmer_p2",
             gate_initializations=[.5] * 6,
@@ -112,8 +115,8 @@ def main() -> None:
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
-    if not EXISTING_I2.exists():
-        raise FileNotFoundError(EXISTING_I2)
+    if not PAIRING_REFERENCE.exists():
+        raise FileNotFoundError(PAIRING_REFERENCE)
     if CHECKPOINTS.exists() and any(CHECKPOINTS.iterdir()):
         raise RuntimeError(f"refusing to reuse non-empty I2F checkpoint directory: {CHECKPOINTS}")
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)

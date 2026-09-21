@@ -323,10 +323,19 @@ def main() -> None:
             if Path(path).suffix.lower() == ".py"
             or path == "kaggle/kernel-metadata.json"
         ]
+        # I2F needs only a compact, immutable reference to the existing I2
+        # initial topology for its pairing assertions.  Do not upload the
+        # large historical result archive/checkpoints.
+        implicit = []
+        if args.entry.endswith("initialization_i2f_kaggle.py"):
+            implicit.append("research/configs/initialization_i2_pairing_reference.json")
         for extra in args.include_file:
             if extra not in run_git(["ls-files"], root).splitlines():
                 print(f"ERROR: --include-file is not tracked: {extra}", file=sys.stderr)
                 sys.exit(1)
+            if extra not in files:
+                files.append(extra)
+        for extra in implicit:
             if extra not in files:
                 files.append(extra)
     if not files:
