@@ -38,7 +38,8 @@ def theory(p,m,q):
 
 def one_chain(p0, sigma, bias_name, seed, n_bool, n_cont, depth=12):
     layers=[layer_pair(64,sigma,BIAS[bias_name],seed+i+1) for i in range(depth)]
-    xb=controlled_binary(n_bool,64,p0,seed+10000).bool(); xc=xb[:n_cont].float(); rows=[]
+    xb=controlled_binary(n_bool,64,p0,seed+10000).bool()
+    xc=controlled_binary(n_cont,64,p0,seed+20000).float(); rows=[]
     for dep in range(depth+1):
         row={"depth":dep,"p_zero_bool":float((~xb).float().mean()),"continuous":stats(xc)}
         if dep==0: row["selected_fan_in"] = None
@@ -71,22 +72,24 @@ def residual_stats(sigma, bias_name, seeds):
         init=lambda t,fan_in: meanfield_gaussian_edge_init_(t,fan_in,sigma)
         model=SigmoidOrModernLogicGateNet(8,4,width=64,num_residual_blocks=2,or_operator='lehmer_p2',
             gate_initializations=[.5]*6,bias_initialization=BIAS[bias_name],edge_initialization=init)
-        h=x; rows=[{'name':'input','continuous':stats(h),'boolean_zero':float((h<.5).float().mean())}]
-        h=model.stem(h); rows.append({'name':'stem','continuous':stats(h),'boolean_zero':float((h<.5).float().mean())})
+        discrete=model.to_discrete(.5)
+        h=x; hb=x.bool(); rows=[{'name':'input','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())}]
+        h=model.stem(h); hb=discrete.stem(hb); rows.append({'name':'stem','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
         for bi,block in enumerate(model.blocks):
-            h1=block.layer1(h); rows.append({'name':f'block{bi}.layer1','continuous':stats(h1),'boolean_zero':float((h1<.5).float().mean())})
-            h2=block.layer2(h1); rows.append({'name':f'block{bi}.layer2','continuous':stats(h2),'boolean_zero':float((h2<.5).float().mean())})
-            h=h+h2-2*h*h2; rows.append({'name':f'block{bi}.residual','continuous':stats(h),'boolean_zero':float((h<.5).float().mean())})
-        h=model.head(h); rows.append({'name':'head','continuous':stats(h),'boolean_zero':float((h<.5).float().mean())})
+            db=discrete.blocks[bi]
+            h1=block.layer1(h); hb1=db.layer1(hb); rows.append({'name':f'block{bi}.layer1','continuous':stats(h1),'continuous_below_half':float((h1<.5).float().mean()),'discrete_zero':float((~hb1).float().mean())})
+            h2=block.layer2(h1); hb2=db.layer2(hb1); rows.append({'name':f'block{bi}.layer2','continuous':stats(h2),'continuous_below_half':float((h2<.5).float().mean()),'discrete_zero':float((~hb2).float().mean())})
+            h=h+h2-2*h*h2; hb=hb ^ hb2; rows.append({'name':f'block{bi}.residual','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
+        h=model.head(h); hb=discrete.head(hb); rows.append({'name':'head','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
         out.append(rows)
     result=[]
     for i,name in enumerate([r['name'] for r in out[0]]):
         cs=[r[i]['continuous'] for r in out]
-        result.append({'name':name,'continuous_mean':{k:sum(c[k] for c in cs)/len(cs) for k in cs[0]},'boolean_zero_mean':sum(r[i]['boolean_zero'] for r in out)/len(out)})
+        result.append({'name':name,'continuous_mean':{k:sum(c[k] for c in cs)/len(cs) for k in cs[0]},'continuous_below_half_mean':sum(r[i]['continuous_below_half'] for r in out)/len(out),'discrete_zero_mean':sum(r[i]['discrete_zero'] for r in out)/len(out)})
     return result
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--network-seeds',type=int,default=64); ap.add_argument('--bool-batch',type=int,default=8192); ap.add_argument('--continuous-batch',type=int,default=512); ap.add_argument('--output',default=str(ROOT/'research/operator_results/initialization_i1r.json')); a=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument('--network-seeds',type=int,default=64); ap.add_argument('--bool-batch',type=int,default=8192); ap.add_argument('--continuous-batch',type=int,default=512); ap.add_argument('--output',default=str(ROOT/'research/operator_results/initialization_i1r_full.json')); a=ap.parse_args()
     result={"config":{"network_seeds":a.network_seeds,"bool_batch":a.bool_batch,"continuous_batch":a.continuous_batch,"p0":P0S,"depth":12},"theory":{"s_target_64":target_selected_probability(64),"bias_one":[],"balanced":[]},"plain_chain":{},"fanin":{},"bias_signal":{},"residual_network":{}}
     for name,fn in BIAS.items():
         if name == 'ONE':
@@ -95,8 +98,9 @@ def main():
             t = torch.empty(100000).normal_(.5, 2.0)
         else:
             t = torch.empty(100000).normal_(.5, .1)
-        b=torch.clamp(t,0,1); gain=(1-2*b).abs()
-        result['bias_signal'][name]={"raw_mean":float(t.mean()),"effective_mean":float(b.mean()),"effective_std":float(b.std()),"threshold_one":float((b>=.5).float().mean()),"le01":float((b<=.01).float().mean()),"ge99":float((b>=.99).float().mean()),"middle":float(((b>.4)&(b<.6)).float().mean()),"gain_mean":float(gain.mean()),"gain_median":float(gain.median()),"gain_lt01":float((gain<.1).float().mean()),"gain_gt09":float((gain>.9).float().mean())}
+        probe=SigmoidOrLogicLayer(64,64,'lehmer_p2',.5,BIAS[name]); raw_probe=probe.bias.detach(); b=probe.actual_bias().detach(); gain=(1-2*b).abs()
+        xprobe=controlled_binary(8192,64,.5,70000); literal=xprobe.unsqueeze(1)+b.unsqueeze(0)-2*xprobe.unsqueeze(1)*b.unsqueeze(0)
+        result['bias_signal'][name]={"raw_mean":float(raw_probe.mean()),"effective_mean":float(b.mean()),"effective_std":float(b.std()),"threshold_one":float((b>=.5).float().mean()),"le01":float((b<=.01).float().mean()),"ge99":float((b>=.99).float().mean()),"middle":float(((b>.4)&(b<.6)).float().mean()),"gain_mean":float(gain.mean()),"gain_median":float(gain.median()),"gain_lt01":float((gain<.1).float().mean()),"gain_gt09":float((gain>.9).float().mean()),"literal_variance":float(literal.var(unbiased=False)),"input_variance":float(xprobe.var(unbiased=False)),"literal_to_input_variance_ratio":float(literal.var(unbiased=False)/xprobe.var(unbiased=False))}
         q=1.0 if name=='ONE' else (.5 if name=='BALANCED_POLARIZED' else None)
         result['theory']['bias_one' if name=='ONE' else 'balanced' if q==.5 else 'current'] = [{"p0":p,"trajectory":[(lambda x:[x:=theory(x,64,q) for _ in range(12)])(p)]} for p in P0S] if q is not None else []
         for sigma in (2.,4.,6.):
