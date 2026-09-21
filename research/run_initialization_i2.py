@@ -38,8 +38,15 @@ def historical_model(device):
 def model_for(condition, seed, device):
     spec=CONDITIONS[condition]
     if spec['edge']=='historical':
-        torch.manual_seed(seed)
-        return historical_model(device)
+        # Preserve the exact historical CURRENT/CURRENT constructor.  The
+        # factorial extension uses the same fixed edge pattern with a paired
+        # Gaussian bias stream for its ONE/BALANCED cells.
+        if spec['bias'] == 'CURRENT':
+            torch.manual_seed(seed)
+            return historical_model(device)
+        return SigmoidOrModernLogicGateNet(8,4,width=64,num_residual_blocks=2,or_operator='lehmer_p2',
+            gate_initializations=[.75,.25,.75,.25,.75,.25],
+            bias_initialization=bias_init(spec['bias'], 200000 + seed)).to(device)
     # Separate paired streams: same seed gives identical masks across sigma2/4.
     edge_seed=100000+seed; bias_seed=200000+seed
     return SigmoidOrModernLogicGateNet(8,4,width=64,num_residual_blocks=2,or_operator='lehmer_p2',
@@ -51,7 +58,9 @@ def metrics(out,y):
     return {'mse':float((out-y).square().mean().detach().cpu()),'bit_accuracy':float(c.float().mean().cpu()),'exact_accuracy':float(c.all(dim=-1).float().mean().cpu())}
 @torch.no_grad()
 def evaluate(model,x,y):
-    cont=model(x); hard=model.forward_hard(x); disc=model.to_discrete(.5).to(x.device); boolean=disc(x.bool()).float()
+    return evaluate_at_threshold(model, x, y, .5)
+def evaluate_at_threshold(model,x,y,threshold):
+    cont=model(x); hard=model.forward_hard(x); disc=model.to_discrete(threshold).to(x.device); boolean=disc(x.bool()).float()
     return {'continuous':metrics(cont,y),'hard':metrics(hard,y),'boolean':metrics(boolean,y)}
 def layer_stats(model):
     rows=[]
@@ -109,19 +118,24 @@ def paired_assertions(seed,device):
         assert torch.equal(ld.effective_gate()>=.5,le.effective_gate()>=.5)
     return True
 def threshold_report(model,x,y):
-    return {str(t):evaluate(model,x,y)['boolean'] for t in THRESHOLDS}
+    return {str(t):evaluate_at_threshold(model,x,y,t)['boolean'] for t in THRESHOLDS}
 def save_verified(path,state,model,x,y,record,condition,seed,epoch,kind,manifest):
     torch.save(state,path); check=model_for(condition,seed,x.device); check.load_state_dict(torch.load(path,map_location=x.device,weights_only=True)); check.eval(); got=evaluate(check,x,y)
     for mode in ('continuous','hard','boolean'):
         for key in ('mse','bit_accuracy','exact_accuracy'):
             if abs(got[mode][key]-record[mode][key])>1e-6: raise RuntimeError(f'checkpoint mismatch {path} {mode}.{key}')
     manifest.append({'checkpoint':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'condition':condition,'seed':seed,'epoch':epoch,'kind':kind,'metrics':got})
-def run(epochs,seeds,device):
+def run(epochs,seeds,device, conditions=None, checkpoint_root=None, prefix='I2', paired_check=None):
+    conditions = CONDITIONS if conditions is None else conditions
+    checkpoint_root = CK if checkpoint_root is None else Path(checkpoint_root)
     task=build_task('bitwise_xor_truth_table',{'bits':4}); x=task['X'].float().to(device); y=task['Y'].float().to(device)
-    CK.mkdir(parents=True,exist_ok=True); all_results=[]; manifest=[]
-    for condition in CONDITIONS:
+    checkpoint_root.mkdir(parents=True,exist_ok=True); all_results=[]; manifest=[]
+    for condition in conditions:
         for seed in seeds:
-            paired_assertions(seed,device) if condition!='I2-A' else None
+            if paired_check is not None:
+                paired_check(condition, seed, device)
+            elif condition != 'I2-A':
+                paired_assertions(seed,device)
             torch.manual_seed(seed); model=model_for(condition,seed,device); opt=torch.optim.Adam(model.parameters(),lr=.01)
             init_state={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}; initial={'edge_mask_sha256':mask_hash(model),'bias_mask_sha256':mask_hash(model,True),'layers':layer_stats(model),'activation_trace':activation_trace(model,x)}
             trajectory=[]; milestones={}; pending={}; first_bool=None; regressions=0; best_cont=None; best_bool=None
@@ -137,10 +151,20 @@ def run(epochs,seeds,device):
                 elif first_bool is not None and ev['boolean']['exact_accuracy']<1.: regressions+=1
                 if best_cont is None or mse<best_cont['continuous']['mse']: best_cont=copy.deepcopy(rec); queue('best_continuous_mse',epoch,rec)
                 if best_bool is None or ev['boolean']['exact_accuracy']>best_bool['boolean']['exact_accuracy']: best_bool=copy.deepcopy(rec); queue('best_boolean_exact',epoch,rec)
-            queue('final',epochs,trajectory[-1]); model.load_state_dict({k:v.to(device) for k,v in pending['best_continuous_mse'][2].items()}); best_cont['threshold_stability']=threshold_report(model,x,y); best_cont['final_topology']=layer_stats(model)
-            for kind,(ep,rec,state) in pending.items(): save_verified(CK/f'I2_{condition}_seed{seed}_{kind}.pt',state,model,x,y,rec,condition,seed,ep,kind,manifest)
+            queue('final',epochs,trajectory[-1])
+            # Preserve end-of-training topology before loading any selected
+            # checkpoint for threshold diagnostics.
+            final_state={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
             final_masks={'edge':mask_hash(model),'bias':mask_hash(model,True)}
-            all_results.append({'experiment':'I2','condition':condition,'seed':seed,'epochs':epochs,'optimizer_steps':epochs+1,'initialization':initial,'final_mask_sha256':final_masks,'edge_mask_hamming':mask_hamming(model,init_state),'bias_mask_hamming':mask_hamming(model,init_state,True),'best_continuous':best_cont,'best_boolean':best_bool,'first_boolean_recovery':first_bool,'boolean_regressions_after_recovery':regressions,'milestones':milestones,'trajectory':trajectory})
+            final_edge_hamming=mask_hamming(model,init_state)
+            final_bias_hamming=mask_hamming(model,init_state,True)
+            model.load_state_dict({k:v.to(device) for k,v in pending['best_continuous_mse'][2].items()})
+            best_cont['threshold_stability']=threshold_report(model,x,y)
+            best_cont['final_topology']=layer_stats(model)
+            for kind,(ep,rec,state) in pending.items(): save_verified(checkpoint_root/f'{prefix}_{condition}_seed{seed}_{kind}.pt',state,model,x,y,rec,condition,seed,ep,kind,manifest)
+            final_model=model_for(condition,seed,device)
+            final_model.load_state_dict(final_state)
+            all_results.append({'experiment':prefix,'condition':condition,'seed':seed,'epochs':epochs,'optimizer_steps':epochs+1,'initialization':initial,'final_mask_sha256':final_masks,'edge_mask_hamming':final_edge_hamming,'bias_mask_hamming':final_bias_hamming,'final_topology':layer_stats(final_model),'best_continuous':best_cont,'best_boolean':best_bool,'first_boolean_recovery':first_bool,'boolean_regressions_after_recovery':regressions,'milestones':milestones,'trajectory':trajectory})
             print(condition,seed,best_cont['continuous']['mse'],best_cont['boolean']['exact_accuracy'],first_bool,flush=True)
     return all_results,manifest
 def main():

@@ -206,6 +206,8 @@ def main() -> None:
             metrics_name = "research/operator_results/initialization_i1r_full.json"
         elif ENTRY.endswith("initialization_i2_kaggle.py"):
             metrics_name = "research/operator_results/initialization_i2_results.json"
+        elif ENTRY.endswith("initialization_i2f_kaggle.py"):
+            metrics_name = "research/operator_results/initialization_i2f_results.json"
         else:
             metrics_name = "b3_kaggle_metrics.json"
         metrics_file = REPO_DIR / metrics_name
