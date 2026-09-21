@@ -48,11 +48,15 @@ def main() -> None:
         opt = torch.optim.Adam(model.parameters(), lr=.01)
         initial = evaluate(model, x, y)
         best = None; best_boolean = None; trajectory = []
+        shutil.rmtree(EXPORT, ignore_errors=True)
         EXPORT.mkdir(parents=True, exist_ok=True)
         manifest = []
 
         def save_verified(kind, step, record):
-            path = EXPORT / f"B3R_CONT_lehmer_p2_seed1_{kind}.pt"
+            # Best-state updates can happen many times.  Include the step in
+            # every filename so manifest entries always refer to immutable
+            # bytes rather than an overwritten path.
+            path = EXPORT / f"B3R_CONT_lehmer_p2_seed1_{kind}_step{step}.pt"
             torch.save({k: v.detach().cpu() for k, v in model.state_dict().items()}, path)
             check = make_model(device)
             check.load_state_dict(torch.load(path, map_location=device, weights_only=True)); check.eval()
