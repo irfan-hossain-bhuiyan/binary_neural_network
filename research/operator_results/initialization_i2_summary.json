@@ -1,0 +1,106 @@
+{
+  "experiment": "I2-summary",
+  "summary": [
+    {
+      "condition": "I2-A",
+      "boolean_recovery_count": 4,
+      "boolean_recovery_rate": 0.8,
+      "median_recovery_epoch": 500,
+      "median_best_mse": 0.0002106585743604228,
+      "mean_final_boolean_exact": 0.9,
+      "bad_basins": 1
+    },
+    {
+      "condition": "I2-B",
+      "boolean_recovery_count": 1,
+      "boolean_recovery_rate": 0.2,
+      "median_recovery_epoch": 400,
+      "median_best_mse": 0.0012591071426868439,
+      "mean_final_boolean_exact": 0.8484375,
+      "bad_basins": 4
+    },
+    {
+      "condition": "I2-C",
+      "boolean_recovery_count": 0,
+      "boolean_recovery_rate": 0.0,
+      "median_recovery_epoch": null,
+      "median_best_mse": 0.019390378147363663,
+      "mean_final_boolean_exact": 0.540625,
+      "bad_basins": 5
+    },
+    {
+      "condition": "I2-D",
+      "boolean_recovery_count": 1,
+      "boolean_recovery_rate": 0.2,
+      "median_recovery_epoch": 425,
+      "median_best_mse": 0.006141383200883865,
+      "mean_final_boolean_exact": 0.803125,
+      "bad_basins": 4
+    },
+    {
+      "condition": "I2-E",
+      "boolean_recovery_count": 0,
+      "boolean_recovery_rate": 0.0,
+      "median_recovery_epoch": null,
+      "median_best_mse": 0.02439242973923683,
+      "mean_final_boolean_exact": 0.46953125,
+      "bad_basins": 5
+    }
+  ],
+  "paired_sigma": {
+    "I2-B": [
+      {
+        "seed": 0,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 1,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 2,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 3,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 4,
+        "sigma2_recovered": true,
+        "sigma4_recovered": false
+      }
+    ],
+    "I2-D": [
+      {
+        "seed": 0,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 1,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 2,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 3,
+        "sigma2_recovered": true,
+        "sigma4_recovered": false
+      },
+      {
+        "seed": 4,
+        "sigma2_recovered": false,
+        "sigma4_recovered": false
+      }
+    ]
+  }
+}

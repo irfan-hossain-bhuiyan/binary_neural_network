@@ -216,3 +216,49 @@ more saturated. I2 training has not been started.
 - `research/analyze_meanfield_initialization.py`
 - `research/tests/test_meanfield_initialization.py`
 - `research/operator_results/initialization_i0_i1.json`
+
+## I2 — initialization reliability training
+
+I2 trained the fixed Lehmer-p2 modern network on the complete 256-row XOR
+truth table using the historical inclusive loop (3001 optimizer updates for
+`epochs=3000`). The five conditions and five seeds were run on Kaggle CUDA.
+All checkpoints were reloaded and reevaluated before being included in the
+manifest; 100 checkpoint files were downloaded and their SHA-256 hashes
+matched the remote manifest.
+
+| condition | Boolean recovery | median recovery epoch | median best MSE | mean final Boolean exact | bad basins |
+|---|---:|---:|---:|---:|---:|
+| I2-A historical current/current | 4/5 | 500 | 0.000211 | 0.900 | 1 |
+| I2-B MF sigma2 + ONE | 1/5 | 400 | 0.001259 | 0.848 | 4 |
+| I2-C MF sigma4 + ONE | 0/5 | — | 0.019390 | 0.541 | 5 |
+| I2-D MF sigma2 + balanced polarized | 1/5 | 425 | 0.006141 | 0.803 | 4 |
+| I2-E MF sigma4 + balanced polarized | 0/5 | — | 0.024392 | 0.470 | 5 |
+
+The historical baseline recovered the exact Boolean function for four of five
+seeds. The sparse mean-field initializers did not improve recovery in this
+experiment. Sigma 2 was consistently less damaging than sigma 4, while sigma
+4 produced more Boolean-like initial gates but substantially worse training
+basins. The one successful MF sigma2/ONE run recovered at epoch 400; the one
+successful MF sigma2/balanced run recovered at epoch 425.
+
+The paired sigma assertions passed: sigma2 and sigma4 used identical initial
+thresholded edge masks for each matched seed, while their continuous gate
+values differed. The paired edge topology therefore does not explain the
+sigma2/sigma4 outcome; the difference is continuous parameter geometry and
+sigmoid saturation. The CURRENT and BALANCED_POLARIZED bias streams likewise
+preserved matched polarity masks in the paired initializer tests.
+
+These results do not show that mean-field initialization is useless in
+general. They show that the proposed sparse target fan-in and polarized bias
+conditions are not a drop-in improvement for this fixed architecture and
+training recipe. The historical dense edge initialization remains the best
+candidate for the next decision.
+
+### I2 artifacts
+
+- `research/operator_results/initialization_i2_results.json`
+- `research/operator_results/initialization_i2_summary.json`
+- `research/operator_results/initialization_i2_checkpoints/`
+- `research/figures/initialization_i2_training_curves.png`
+- `research/figures/initialization_i2_recovery.png`
+- `research/figures/initialization_i2_mse_vs_boolean.png`
