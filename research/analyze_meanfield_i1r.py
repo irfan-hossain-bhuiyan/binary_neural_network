@@ -63,6 +63,17 @@ def fanin_stats(sigma,bias_name,seeds):
         rows.append({"zero":float((k==0).float().mean()),"one":float((k==1).float().mean()),"two":float((k==2).float().mean()),"three":float((k==3).float().mean()),"four_plus":float((k>=4).float().mean()),"mean":float(k.float().mean()),"median":float(k.float().median()),"max":int(k.max())})
     return {k:sum(r[k] for r in rows)/len(rows) for k in rows[0]}
 
+def discrete_residual_trace(discrete, x):
+    """Return exact Boolean stage tensors for the modern residual graph."""
+    hb=x.bool(); out=[('input', hb)]
+    hb=discrete.stem(hb); out.append(('stem', hb))
+    for bi, block in enumerate(discrete.blocks):
+        h1=block.layer1(hb); out.append((f'block{bi}.layer1', h1))
+        h2=block.layer2(h1); out.append((f'block{bi}.layer2', h2))
+        hb=hb ^ h2; out.append((f'block{bi}.residual', hb))
+    out.append(('head', discrete.head(hb)))
+    return out
+
 @torch.no_grad()
 def residual_stats(sigma, bias_name, seeds):
     task=build_task('bitwise_xor_truth_table', {'bits':4}); x=task['X'].float()
