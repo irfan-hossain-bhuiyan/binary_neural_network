@@ -13,7 +13,13 @@ def main():
     summary=[]
     for c in conditions:
         rs=[r for r in rows if r['condition']==c]; epochs=[r['first_boolean_recovery']['epoch'] for r in rs if r['first_boolean_recovery']]
-        summary.append({'condition':c,'boolean_recovery_count':len(epochs),'boolean_recovery_rate':len(epochs)/len(rs),'median_recovery_epoch':sorted(epochs)[len(epochs)//2] if epochs else None,'median_best_mse':sorted(r['best_continuous']['continuous']['mse'] for r in rs)[len(rs)//2],'mean_final_boolean_exact':sum(r['trajectory'][-1]['boolean']['exact_accuracy'] for r in rs)/len(rs),'bad_basins':sum(r['trajectory'][-1]['boolean']['exact_accuracy']<1 for r in rs)})
+        recovered_intervals = []
+        for r in rs:
+            report = r.get('threshold_stability', {}).get('best_boolean_exact', {})
+            interval = report.get('largest_contiguous_interval')
+            if r['first_boolean_recovery'] and interval:
+                recovered_intervals.append(interval)
+        summary.append({'condition':c,'boolean_recovery_count':len(epochs),'boolean_recovery_rate':len(epochs)/len(rs),'median_recovery_epoch':sorted(epochs)[len(epochs)//2] if epochs else None,'median_best_mse':sorted(r['best_continuous']['continuous']['mse'] for r in rs)[len(rs)//2],'mean_final_boolean_exact':sum(r['trajectory'][-1]['boolean']['exact_accuracy'] for r in rs)/len(rs),'bad_basins':sum(r['trajectory'][-1]['boolean']['exact_accuracy']<1 for r in rs),'recovered_functional_threshold_intervals':recovered_intervals,'recovered_functional_threshold_margins':[b-a for a,b in recovered_intervals]})
     out=ROOT/'research/operator_results/initialization_i2_summary.json'; out.write_text(json.dumps({'experiment':'I2-summary','summary':summary,'paired_sigma':{c:[{'seed':s,'sigma2_recovered':next(r for r in rows if r['condition']==c and r['seed']==s)['first_boolean_recovery'] is not None,'sigma4_recovered':next(r for r in rows if r['condition']==('I2-C' if c=='I2-B' else 'I2-E') and r['seed']==s)['first_boolean_recovery'] is not None} for s in range(5)] for c in ('I2-B','I2-D')}},indent=2))
     # Continuous-loss trajectories, one faint line per seed and a median line.
     plt.figure(figsize=(9,5))

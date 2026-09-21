@@ -8,7 +8,31 @@
       "median_recovery_epoch": 500,
       "median_best_mse": 0.0002106585743604228,
       "mean_final_boolean_exact": 0.9,
-      "bad_basins": 1
+      "bad_basins": 1,
+      "recovered_functional_threshold_intervals": [
+        [
+          0.475,
+          0.775
+        ],
+        [
+          0.475,
+          0.75
+        ],
+        [
+          0.5,
+          0.8
+        ],
+        [
+          0.275,
+          0.525
+        ]
+      ],
+      "recovered_functional_threshold_margins": [
+        0.30000000000000004,
+        0.275,
+        0.30000000000000004,
+        0.25
+      ]
     },
     {
       "condition": "I2-B",
@@ -17,7 +41,16 @@
       "median_recovery_epoch": 400,
       "median_best_mse": 0.0012591071426868439,
       "mean_final_boolean_exact": 0.8484375,
-      "bad_basins": 4
+      "bad_basins": 4,
+      "recovered_functional_threshold_intervals": [
+        [
+          0.425,
+          0.65
+        ]
+      ],
+      "recovered_functional_threshold_margins": [
+        0.22500000000000003
+      ]
     },
     {
       "condition": "I2-C",
@@ -26,7 +59,9 @@
       "median_recovery_epoch": null,
       "median_best_mse": 0.019390378147363663,
       "mean_final_boolean_exact": 0.540625,
-      "bad_basins": 5
+      "bad_basins": 5,
+      "recovered_functional_threshold_intervals": [],
+      "recovered_functional_threshold_margins": []
     },
     {
       "condition": "I2-D",
@@ -35,7 +70,16 @@
       "median_recovery_epoch": 425,
       "median_best_mse": 0.006141383200883865,
       "mean_final_boolean_exact": 0.803125,
-      "bad_basins": 4
+      "bad_basins": 4,
+      "recovered_functional_threshold_intervals": [
+        [
+          0.5,
+          0.8
+        ]
+      ],
+      "recovered_functional_threshold_margins": [
+        0.30000000000000004
+      ]
     },
     {
       "condition": "I2-E",
@@ -44,7 +88,9 @@
       "median_recovery_epoch": null,
       "median_best_mse": 0.02439242973923683,
       "mean_final_boolean_exact": 0.46953125,
-      "bad_basins": 5
+      "bad_basins": 5,
+      "recovered_functional_threshold_intervals": [],
+      "recovered_functional_threshold_margins": []
     }
   ],
   "paired_sigma": {

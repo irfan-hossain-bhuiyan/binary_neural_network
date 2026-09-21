@@ -248,6 +248,17 @@ sigma2/sigma4 outcome; the difference is continuous parameter geometry and
 sigmoid saturation. The CURRENT and BALANCED_POLARIZED bias streams likewise
 preserved matched polarity masks in the paired initializer tests.
 
+Post-processing swept the saved Boolean checkpoints over thresholds from
+`0.20` through `0.80` in steps of `0.025`, using the complete truth table.
+The successful baseline circuits were functionally stable over intervals
+`[0.475, 0.775]`, `[0.475, 0.750]`, `[0.500, 0.800]`, and `[0.275, 0.525]`
+for seeds 0, 2, 3, and 4 respectively. The single successful MF sigma2/ONE
+circuit (seed 4) was exact on `[0.425, 0.650]`; the single successful MF
+sigma2/BALANCED_POLARIZED circuit (seed 3) was exact on `[0.500, 0.800]`.
+The unsuccessful Boolean checkpoints had no exact threshold in this sweep.
+These are functional margins of saved circuits, not thresholds selected for
+training or model selection.
+
 These results do not show that mean-field initialization is useless in
 general. They show that the proposed sparse target fan-in and polarized bias
 conditions are not a drop-in improvement for this fixed architecture and
@@ -258,6 +269,7 @@ candidate for the next decision.
 
 - `research/operator_results/initialization_i2_results.json`
 - `research/operator_results/initialization_i2_summary.json`
+- `research/analyze_i2_threshold_stability.py`
 - `research/operator_results/initialization_i2_checkpoints/`
 - `research/figures/initialization_i2_training_curves.png`
 - `research/figures/initialization_i2_recovery.png`
