@@ -18,5 +18,9 @@ def test_i1r_discrete_residual_trace_uses_exact_xor_stages():
     x = torch.tensor([[False, False], [False, True], [True, False], [True, True]])
     trace = dict(discrete_residual_trace(model, x))
     # The residual stage is a Boolean XOR of the block input and branch.
+    assert torch.equal(trace['stem'], model.stem(x))
+    assert torch.equal(trace['block0.layer1'], model.blocks[0].layer1(trace['stem']))
+    assert torch.equal(trace['block0.layer2'], model.blocks[0].layer2(trace['block0.layer1']))
     assert torch.equal(trace['block0.residual'], trace['stem'] ^ trace['block0.layer2'])
+    assert torch.equal(trace['head'], model.head(trace['block0.residual']))
     assert all(t.dtype == torch.bool for t in trace.values())

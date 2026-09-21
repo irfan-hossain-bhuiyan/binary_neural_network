@@ -12,5 +12,4 @@ subprocess.run([
     "--continuous-batch", "512",
     "--output", str(result),
 ], check=True)
-shutil.copy2(result, ROOT / "b3_kaggle_metrics.json")
 print(result)

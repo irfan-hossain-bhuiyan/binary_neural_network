@@ -36,6 +36,13 @@ def theory(p,m,q):
     s=target_selected_probability(m)
     return (1-s*(1-q+(2*q-1)*p))**m
 
+def theory_trajectory(p0, m, q, s=None, depth=12):
+    s = target_selected_probability(m) if s is None else s
+    values=[float(p0)]
+    for _ in range(depth):
+        values.append(float((1-s*(1-q+(2*q-1)*values[-1]))**m))
+    return values
+
 def one_chain(p0, sigma, bias_name, seed, n_bool, n_cont, depth=12):
     layers=[layer_pair(64,sigma,BIAS[bias_name],seed+i+1) for i in range(depth)]
     xb=controlled_binary(n_bool,64,p0,seed+10000).bool()
@@ -52,7 +59,15 @@ def summarize_runs(runs):
     out=[]
     for dep in range(len(runs[0])):
         vals=[r[dep] for r in runs]; p=torch.tensor([v['p_zero_bool'] for v in vals]); cs=[v['continuous'] for v in vals]
-        out.append({"depth":dep,"p_zero_bool_mean":float(p.mean()),"p_zero_bool_std":float(p.std(unbiased=False)),"p_zero_bool_q05":float(torch.quantile(p,.05)),"p_zero_bool_q25":float(torch.quantile(p,.25)),"p_zero_bool_median":float(torch.quantile(p,.5)),"p_zero_bool_q75":float(torch.quantile(p,.75)),"p_zero_bool_q95":float(torch.quantile(p,.95)),"continuous_mean":{k:sum(c[k] for c in cs)/len(cs) for k in cs[0]}})
+        entry={"depth":dep,"p_zero_bool_mean":float(p.mean()),"p_zero_bool_std":float(p.std(unbiased=False)),"p_zero_bool_q05":float(torch.quantile(p,.05)),"p_zero_bool_q25":float(torch.quantile(p,.25)),"p_zero_bool_median":float(torch.quantile(p,.5)),"p_zero_bool_q75":float(torch.quantile(p,.75)),"p_zero_bool_q95":float(torch.quantile(p,.95)),"continuous_mean":{k:sum(c[k] for c in cs)/len(cs) for k in cs[0]}}
+        if dep < len(runs[0])-1:
+            rho=[]
+            for run in runs:
+                d0=run[dep]['p_zero_bool']-.5; d1=run[dep+1]['p_zero_bool']-.5
+                if abs(d0)>1e-6: rho.append(d1/d0)
+            if rho:
+                rt=torch.tensor(rho); entry['rho_mean']=float(rt.mean()); entry['rho_median']=float(rt.median()); entry['rho_q05']=float(torch.quantile(rt,.05)); entry['rho_q95']=float(torch.quantile(rt,.95)); entry['rho_abs_mean']=float(rt.abs().mean()); entry['rho_count']=len(rho)
+        out.append(entry)
     return out
 
 def fanin_stats(sigma,bias_name,seeds):
@@ -61,7 +76,15 @@ def fanin_stats(sigma,bias_name,seeds):
         l,_=layer_pair(64,sigma,BIAS[bias_name],seed)
         k=(l.effective_gate()>=.5).sum(1)
         rows.append({"zero":float((k==0).float().mean()),"one":float((k==1).float().mean()),"two":float((k==2).float().mean()),"three":float((k==3).float().mean()),"four_plus":float((k>=4).float().mean()),"mean":float(k.float().mean()),"median":float(k.float().median()),"max":int(k.max())})
-    return {k:sum(r[k] for r in rows)/len(rows) for k in rows[0]}
+    result={k:sum(r[k] for r in rows)/len(rows) for k in rows[0]}
+    result['s_observed']=result['mean']/64.0
+    # Bias polarity is measured on the same initialized layer distribution.
+    qvals=[]
+    for seed in range(seeds):
+        l,_=layer_pair(64,sigma,BIAS[bias_name],10000+seed)
+        qvals.append(float((l.actual_bias()>=.5).float().mean()))
+    result['q_observed']=sum(qvals)/len(qvals)
+    return result
 
 def discrete_residual_trace(discrete, x):
     """Return exact Boolean stage tensors for the modern residual graph."""
@@ -84,14 +107,15 @@ def residual_stats(sigma, bias_name, seeds):
         model=SigmoidOrModernLogicGateNet(8,4,width=64,num_residual_blocks=2,or_operator='lehmer_p2',
             gate_initializations=[.5]*6,bias_initialization=BIAS[bias_name],edge_initialization=init)
         discrete=model.to_discrete(.5)
-        h=x; hb=x.bool(); rows=[{'name':'input','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())}]
-        h=model.stem(h); hb=discrete.stem(hb); rows.append({'name':'stem','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
+        h=x; rows=[{'name':'input','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean())}]
+        discrete_rows=dict(discrete_residual_trace(discrete, x.bool()))
+        rows[-1]['discrete_zero']=float((~discrete_rows['input']).float().mean())
+        h=model.stem(h); rows.append({'name':'stem','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~discrete_rows['stem']).float().mean())})
         for bi,block in enumerate(model.blocks):
-            db=discrete.blocks[bi]
-            h1=block.layer1(h); hb1=db.layer1(hb); rows.append({'name':f'block{bi}.layer1','continuous':stats(h1),'continuous_below_half':float((h1<.5).float().mean()),'discrete_zero':float((~hb1).float().mean())})
-            h2=block.layer2(h1); hb2=db.layer2(hb1); rows.append({'name':f'block{bi}.layer2','continuous':stats(h2),'continuous_below_half':float((h2<.5).float().mean()),'discrete_zero':float((~hb2).float().mean())})
-            h=h+h2-2*h*h2; hb=hb ^ hb2; rows.append({'name':f'block{bi}.residual','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
-        h=model.head(h); hb=discrete.head(hb); rows.append({'name':'head','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~hb).float().mean())})
+            h1=block.layer1(h); rows.append({'name':f'block{bi}.layer1','continuous':stats(h1),'continuous_below_half':float((h1<.5).float().mean()),'discrete_zero':float((~discrete_rows[f'block{bi}.layer1']).float().mean())})
+            h2=block.layer2(h1); rows.append({'name':f'block{bi}.layer2','continuous':stats(h2),'continuous_below_half':float((h2<.5).float().mean()),'discrete_zero':float((~discrete_rows[f'block{bi}.layer2']).float().mean())})
+            h=h+h2-2*h*h2; rows.append({'name':f'block{bi}.residual','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~discrete_rows[f'block{bi}.residual']).float().mean())})
+        h=model.head(h); rows.append({'name':'head','continuous':stats(h),'continuous_below_half':float((h<.5).float().mean()),'discrete_zero':float((~discrete_rows['head']).float().mean())})
         out.append(rows)
     result=[]
     for i,name in enumerate([r['name'] for r in out[0]]):
@@ -100,23 +124,22 @@ def residual_stats(sigma, bias_name, seeds):
     return result
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--network-seeds',type=int,default=64); ap.add_argument('--bool-batch',type=int,default=8192); ap.add_argument('--continuous-batch',type=int,default=512); ap.add_argument('--output',default=str(ROOT/'research/operator_results/initialization_i1r_full.json')); a=ap.parse_args()
-    result={"config":{"network_seeds":a.network_seeds,"bool_batch":a.bool_batch,"continuous_batch":a.continuous_batch,"p0":P0S,"depth":12},"theory":{"s_target_64":target_selected_probability(64),"bias_one":[],"balanced":[]},"plain_chain":{},"fanin":{},"bias_signal":{},"residual_network":{}}
+    ap=argparse.ArgumentParser(); ap.add_argument('--network-seeds',type=int,default=64); ap.add_argument('--residual-seeds',type=int,default=64); ap.add_argument('--bool-batch',type=int,default=8192); ap.add_argument('--continuous-batch',type=int,default=512); ap.add_argument('--output',default=str(ROOT/'research/operator_results/initialization_i1r_full.json')); a=ap.parse_args()
+    result={"config":{"network_seeds":a.network_seeds,"residual_seeds":a.residual_seeds,"bool_batch":a.bool_batch,"continuous_batch":a.continuous_batch,"p0":P0S,"depth":12},"theory":{"s_target_64":target_selected_probability(64),"ideal_theory":{},"observed_parameter_theory":{}},"plain_chain":{},"fanin":{},"bias_signal":{},"residual_network":{}}
     for name,fn in BIAS.items():
-        if name == 'ONE':
-            t = torch.empty(100000).normal_(1.0, .1)
-        elif name == 'BALANCED_POLARIZED':
-            t = torch.empty(100000).normal_(.5, 2.0)
-        else:
-            t = torch.empty(100000).normal_(.5, .1)
+        # Bias statistics use a dedicated probe seed, independent of prior work.
+        torch.manual_seed(91000 + list(BIAS).index(name))
         probe=SigmoidOrLogicLayer(64,64,'lehmer_p2',.5,BIAS[name]); raw_probe=probe.bias.detach(); b=probe.actual_bias().detach(); gain=(1-2*b).abs()
         xprobe=controlled_binary(8192,64,.5,70000); literal=xprobe.unsqueeze(1)+b.unsqueeze(0)-2*xprobe.unsqueeze(1)*b.unsqueeze(0)
         result['bias_signal'][name]={"raw_mean":float(raw_probe.mean()),"effective_mean":float(b.mean()),"effective_std":float(b.std()),"threshold_one":float((b>=.5).float().mean()),"le01":float((b<=.01).float().mean()),"ge99":float((b>=.99).float().mean()),"middle":float(((b>.4)&(b<.6)).float().mean()),"gain_mean":float(gain.mean()),"gain_median":float(gain.median()),"gain_lt01":float((gain<.1).float().mean()),"gain_gt09":float((gain>.9).float().mean()),"literal_variance":float(literal.var(unbiased=False)),"input_variance":float(xprobe.var(unbiased=False)),"literal_to_input_variance_ratio":float(literal.var(unbiased=False)/xprobe.var(unbiased=False))}
-        q=1.0 if name=='ONE' else (.5 if name=='BALANCED_POLARIZED' else None)
-        result['theory']['bias_one' if name=='ONE' else 'balanced' if q==.5 else 'current'] = [{"p0":p,"trajectory":[(lambda x:[x:=theory(x,64,q) for _ in range(12)])(p)]} for p in P0S] if q is not None else []
+        q=1.0 if name=='ONE' else .5
         for sigma in (2.,4.,6.):
             key=f"{name}_sigma{int(sigma)}"; result['plain_chain'][key]={}; result['fanin'][key]=fanin_stats(sigma,name,a.network_seeds)
-            if sigma in (2.,4.): result['residual_network'][key]=residual_stats(sigma,name,min(a.network_seeds,8))
+            ideal=[{"p0":p,"trajectory":theory_trajectory(p,64,q)} for p in P0S]
+            result['theory']['ideal_theory'][name]=ideal
+            obs=result['fanin'][key]
+            result['theory']['observed_parameter_theory'][key]=[{"p0":p,"trajectory":theory_trajectory(p,64,obs['q_observed'],obs['s_observed'])} for p in P0S]
+            if sigma in (2.,4.): result['residual_network'][key]=residual_stats(sigma,name,a.residual_seeds)
             for p0 in P0S:
                 runs=[one_chain(p0,sigma,name,s,a.bool_batch,a.continuous_batch) [0] for s in range(a.network_seeds)]
                 result['plain_chain'][key][str(p0)]=summarize_runs(runs)
