@@ -125,6 +125,91 @@ Not run yet. It must remain a separate test of edge initialization
 (`CURRENT_EDGE` vs mean-field Gaussian sigma 4) and bias initialization
 (`BIAS_CURRENT` vs `BIAS_ONE`) after the propagation diagnostics are reviewed.
 
+## I1R smoke
+
+The earlier smoke artifact is preserved as
+`research/operator_results/initialization_i1r_smoke.json`. It used four
+network realizations, 1024 Boolean rows, and 16 continuous rows and is not
+used for final conclusions.
+
+## I1R full
+
+The canonical full run is stored at
+`research/operator_results/initialization_i1r_full.json`. It ran on CUDA with
+64 plain-chain seeds and 64 residual-network seeds, Boolean batch 8192,
+continuous batch 512, depth 12, all seven `p0` values, sigmas 2/4/6 for the
+plain chain, and sigmas 2/4 for the residual network. The CUDA Boolean smoke
+comparison passed exactly.
+
+### Boolean balance and theory
+
+The measured edge selection probability was about `0.02197`, close to the
+target `0.021544`, with fan-in frequencies approximately:
+
+```text
+K=0       0.239
+K=1       0.355
+K=2       0.244
+K=3       0.109
+K>=4      0.053
+```
+
+`CURRENT` and `BALANCED_POLARIZED` had measured polarity probability about
+`0.499` and therefore share the ideal `q=0.5` Boolean mean-field curve.
+`ONE` had `q=1.0` and followed the predicted alternating trajectory. The
+empirical Boolean means stayed near one half after replication, but individual
+depth ratios had high variance when the denominator was close to zero; signed
+rho values are retained in the JSON rather than summarized as a guaranteed
+contraction theorem.
+
+### Continuous signal health
+
+The exact bias mapping produced these literal signal statistics:
+
+| bias | mean `|1-2b|` | literal/input variance ratio |
+|---|---:|---:|
+| CURRENT | 0.163 | 0.042 |
+| ONE | 0.920 | 0.860 |
+| BALANCED_POLARIZED | 0.898 | 0.863 |
+
+Thus CURRENT and BALANCED_POLARIZED have almost identical Boolean polarity
+probabilities but very different continuous XOR signal preservation. This is
+the intended paired initialization control.
+
+For the plain chain, increasing sigma raised continuous activation means and
+variance while leaving the initial threshold topology paired. Sigma changes
+the fractional gates and sigmoid derivative statistics, not the expected
+threshold mask.
+
+### Exact residual-network trace
+
+The residual diagnostic now uses a separate exact discrete network and the
+single `discrete_residual_trace()` implementation. At sigma 4, the final
+head Boolean zero fraction was approximately `0.536` for CURRENT and
+BALANCED_POLARIZED and `0.518` for ONE. Continuous head means were about
+`0.280`, `0.286`, and `0.285` respectively. These are not expected to match
+Boolean one probabilities numerically; they measure different computations.
+
+The head remains systematically low in the continuous trace, especially for
+sigma 2. No head-specific correction is introduced in I1R.
+
+### I1R decision
+
+The full diagnostic supports carrying the following configurations into a
+future initialization-only training comparison, while retaining the current
+baseline:
+
+```text
+CURRENT_EDGE + CURRENT
+MEANFIELD sigma2 + ONE
+MEANFIELD sigma4 + ONE
+MEANFIELD sigma2 + BALANCED_POLARIZED
+MEANFIELD sigma4 + BALANCED_POLARIZED
+```
+
+Sigma 6 is not promoted automatically because its sigmoid derivatives are
+more saturated. I2 training has not been started.
+
 ## Files
 
 - `research/meanfield_initialization.py`
