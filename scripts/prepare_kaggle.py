@@ -198,7 +198,12 @@ def main() -> None:
 
     if ENTRY:
         cmd = [sys.executable, ENTRY]
-        metrics_name = "b3r_kaggle_metrics.json" if ENTRY.endswith("b3r_kaggle.py") else "b3_kaggle_metrics.json"
+        if ENTRY.endswith("b3r_kaggle.py"):
+            metrics_name = "b3r_kaggle_metrics.json"
+        elif ENTRY.endswith("b3r_seed1_continuation_kaggle.py"):
+            metrics_name = "b3r_continuation_metrics.json"
+        else:
+            metrics_name = "b3_kaggle_metrics.json"
         metrics_file = REPO_DIR / metrics_name
     elif MODE == "suite":
         cmd = [sys.executable, "research/run_suite.py",
@@ -237,8 +242,8 @@ def main() -> None:
     RESULT_PATH.write_text(json.dumps(result, indent=2))
     # Preserve explicitly requested research checkpoints as downloadable
     # kernel outputs before removing the extracted source tree.
-    checkpoint_manifest = REPO_DIR / "b3r_checkpoint_manifest.json"
-    if checkpoint_manifest.exists():
+    checkpoint_manifest = next((REPO_DIR / name for name in ("b3r_checkpoint_manifest.json", "b3r_continuation_manifest.json") if (REPO_DIR / name).exists()), None)
+    if checkpoint_manifest is not None:
         manifest = json.loads(checkpoint_manifest.read_text())
         for item in manifest.get("checkpoints", []):
             relative = Path(item["checkpoint"])
@@ -288,6 +293,8 @@ def main() -> None:
                         help="config for --mode single")
     parser.add_argument("--entry", default="",
                         help="custom committed Python entry point")
+    parser.add_argument("--include-file", action="append", default=[],
+                        help="additional tracked file to include in a custom package")
     args = parser.parse_args()
 
     root = Path(
@@ -310,6 +317,12 @@ def main() -> None:
             if Path(path).suffix.lower() == ".py"
             or path == "kaggle/kernel-metadata.json"
         ]
+        for extra in args.include_file:
+            if extra not in run_git(["ls-files"], root).splitlines():
+                print(f"ERROR: --include-file is not tracked: {extra}", file=sys.stderr)
+                sys.exit(1)
+            if extra not in files:
+                files.append(extra)
     if not files:
         print("ERROR: no source files selected for packaging.", file=sys.stderr)
         sys.exit(1)
