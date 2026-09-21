@@ -204,6 +204,8 @@ def main() -> None:
             metrics_name = "b3r_continuation_metrics.json"
         elif ENTRY.endswith("i1r_kaggle.py"):
             metrics_name = "research/operator_results/initialization_i1r_full.json"
+        elif ENTRY.endswith("initialization_i2_kaggle.py"):
+            metrics_name = "research/operator_results/initialization_i2_results.json"
         else:
             metrics_name = "b3_kaggle_metrics.json"
         metrics_file = REPO_DIR / metrics_name
@@ -244,7 +246,7 @@ def main() -> None:
     RESULT_PATH.write_text(json.dumps(result, indent=2))
     # Preserve explicitly requested research checkpoints as downloadable
     # kernel outputs before removing the extracted source tree.
-    checkpoint_manifest = next((REPO_DIR / name for name in ("b3r_checkpoint_manifest.json", "b3r_continuation_manifest.json") if (REPO_DIR / name).exists()), None)
+    checkpoint_manifest = next((REPO_DIR / name for name in ("b3r_checkpoint_manifest.json", "b3r_continuation_manifest.json", "i2_checkpoint_manifest.json") if (REPO_DIR / name).exists()), None)
     if checkpoint_manifest is not None:
         manifest = json.loads(checkpoint_manifest.read_text())
         for item in manifest.get("checkpoints", []):
