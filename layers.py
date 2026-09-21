@@ -259,7 +259,8 @@ class SigmoidOrLogicLayer(nn.Module):
 
     def __init__(self, in_features: int, out_features: int, or_operator: str | OrSurrogate,
                  gate_initialization: float = 0.5,
-                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0)):
+                 bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
+                 edge_initialization: Callable[..., Any] | None = None):
         super().__init__()
         if not 0.0 < gate_initialization < 1.0:
             raise ValueError("gate_initialization must be strictly between 0 and 1")
@@ -269,7 +270,14 @@ class SigmoidOrLogicLayer(nn.Module):
         self.hard_operator = get_operator("hardmax")
         self.raw_edge = nn.Parameter(torch.empty(out_features, in_features))
         self.bias = nn.Parameter(torch.empty(out_features, in_features))
-        nn.init.constant_(self.raw_edge, torch.logit(torch.tensor(float(gate_initialization))).item())
+        if edge_initialization is None:
+            nn.init.constant_(self.raw_edge, torch.logit(torch.tensor(float(gate_initialization))).item())
+        else:
+            # Initializers may accept the tensor only, or tensor plus fan-in.
+            try:
+                edge_initialization(self.raw_edge, in_features)
+            except TypeError:
+                edge_initialization(self.raw_edge)
         bias_initialization(self.bias)
 
     def effective_gate(self) -> torch.Tensor:
@@ -300,10 +308,11 @@ class SigmoidOrXorResidualBlock(nn.Module):
     def __init__(self, width: int, or_operator: str | OrSurrogate,
                  gate_initializations: tuple[float, float] = (0.75, 0.25),
                  bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
-                 residual_enabled: bool = True):
+                 residual_enabled: bool = True,
+                 edge_initialization: Callable[..., Any] | None = None):
         super().__init__()
-        self.layer1 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[0], bias_initialization)
-        self.layer2 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[1], bias_initialization)
+        self.layer1 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[0], bias_initialization, edge_initialization)
+        self.layer2 = SigmoidOrLogicLayer(width, width, or_operator, gate_initializations[1], bias_initialization, edge_initialization)
         self.residual_enabled = residual_enabled
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

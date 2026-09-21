@@ -409,7 +409,8 @@ class SigmoidOrModernLogicGateNet(nn.Module):
                  num_residual_blocks: int = 2, or_operator: str = "hardmax",
                  gate_initializations: list[float] | None = None,
                  bias_initialization: Callable[..., Any] = lambda x: nn.init.normal_(x, mean=1.0),
-                 residual_enabled: bool = True):
+                 residual_enabled: bool = True,
+                 edge_initialization: Callable[..., Any] | None = None):
         super().__init__()
         if width <= 0 or num_residual_blocks < 0:
             raise ValueError("width must be positive and number of residual blocks nonnegative")
@@ -422,14 +423,14 @@ class SigmoidOrModernLogicGateNet(nn.Module):
             gate_initializations = [0.75 if i % 2 == 0 else 0.25 for i in range(count)]
         if len(gate_initializations) != count:
             raise ValueError(f"expected {count} gate initializers, got {len(gate_initializations)}")
-        self.stem = SigmoidOrLogicLayer(input_dim, width, or_operator, gate_initializations[0], bias_initialization)
+        self.stem = SigmoidOrLogicLayer(input_dim, width, or_operator, gate_initializations[0], bias_initialization, edge_initialization)
         self.blocks = nn.ModuleList()
         for i in range(num_residual_blocks):
             j = 1 + 2 * i
             self.blocks.append(SigmoidOrXorResidualBlock(
                 width, or_operator, (gate_initializations[j], gate_initializations[j + 1]),
-                bias_initialization, residual_enabled))
-        self.head = SigmoidOrLogicLayer(width, output_dim, or_operator, gate_initializations[-1], bias_initialization)
+                bias_initialization, residual_enabled, edge_initialization))
+        self.head = SigmoidOrLogicLayer(width, output_dim, or_operator, gate_initializations[-1], bias_initialization, edge_initialization)
 
     @property
     def expectation_layers(self) -> list[SigmoidOrLogicLayer]:
