@@ -87,16 +87,41 @@ and no residual connections. It is a diagnostic of the mean-field heuristic,
 not a replacement architecture. Results are stored in
 `research/operator_results/initialization_i0_i1.json`.
 
-With the present finite-width implementation, Boolean zero fractions drift
-upward through the chain rather than remaining exactly at 0.5. For example,
-at input `p0=0.5`, the depth-12 zero fraction was approximately `0.614` with
-`BIAS_CURRENT` and `0.684` with `BIAS_ONE`. This indicates that the simple
-independence map does not fully predict the actual finite network; the bias-one
-hypothesis is not yet supported by this diagnostic.
+The original single-chain result is retained, but it is not treated as a
+rejection of the theory. At expected selected fan-in about 1.38, graph-level
+variance is large. The early empirical trajectory is qualitatively
+consistent with the predicted oscillatory trajectory, so replication is
+required before judging the hypothesis.
+
+The continuous XOR has an additional issue: `a=x+b-2xb` has
+`da/dx=1-2b`. A narrow `Normal(0.5,0.1)` bias distribution therefore
+suppresses input sensitivity even though its threshold polarity probability
+is about one half.
+
+## I1R — replicated propagation and continuous-bias analysis
+
+`research/analyze_meanfield_i1r.py` adds the requested replicated diagnostic
+for `CURRENT`, `ONE`, and `BALANCED_POLARIZED` bias distributions and edge
+sigmas 2, 4, and 6. It records Boolean propagation bands, continuous
+activation quantiles, selected-fan-in histograms, and bias signal-gain
+statistics. The output is:
+
+`research/operator_results/initialization_i1r.json`
+
+The checked-in run is a smoke-scale execution (4 network realizations,
+1024 Boolean rows, 16 continuous rows) because the full 64-realization,
+8192-row continuous sweep is computationally large. The script defaults to
+the required 64 realizations and 8192 Boolean rows for a full rerun.
+
+The smoke result confirms the intended separation: `BIAS_CURRENT` has mean
+`|1-2b|` about `0.159`, `BIAS_ONE` about `0.920`, and
+`BIAS_BALANCED_POLARIZED` about `0.902`, while the threshold polarity of the
+balanced distribution remains about one half. This supports measuring the
+continuous bias distribution separately from Boolean polarity probability.
 
 ## I2 training factorial
 
-Not run yet. It must remain a separate 2x2 test of edge initialization
+Not run yet. It must remain a separate test of edge initialization
 (`CURRENT_EDGE` vs mean-field Gaussian sigma 4) and bias initialization
 (`BIAS_CURRENT` vs `BIAS_ONE`) after the propagation diagnostics are reviewed.
 
@@ -106,4 +131,3 @@ Not run yet. It must remain a separate 2x2 test of edge initialization
 - `research/analyze_meanfield_initialization.py`
 - `research/tests/test_meanfield_initialization.py`
 - `research/operator_results/initialization_i0_i1.json`
-
