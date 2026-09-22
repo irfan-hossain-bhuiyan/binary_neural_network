@@ -1105,3 +1105,11 @@ The exact endpoint argument is conditional: XOR and Lehmer p=2 have rigid Boolea
 The controlled continuation used fresh identical Adam optimizers at lr .01 because the parent checkpoints did not contain optimizer state. Seed 3 started with two wrong Boolean rows. After 3000 additional steps, MSE reached 7.06e-5 with two wrong rows; BCE reached BCE 8.31e-4 but also retained two wrong rows. Seed 2 showed the contrast: MSE retained 32 wrong rows at 9.62e-4, while BCE reached 8.08e-9 MSE and zero wrong rows. Seed 4 was already Boolean-exact and remained exact; both losses reduced endpoint error further.
 
 This is evidence that BCE can sharpen a favorable basin, but it does not guarantee repair of a residual discrete mismatch. The current evidence does not support claiming that arbitrarily small average MSE alone is sufficient. Uniform endpoint error, layerwise threshold/discrete mismatch, and the zero-side safety certificate are now recorded for every continuation checkpoint.
+
+## I4 worst-case endpoint optimization
+
+I4 tested the same I2-B seed3 checkpoint with three differentiable loss aggregations: mean BCE, top-16 element BCE, and top-8 row BCE. All used fresh Adam at lr .01 and the unchanged Lehmer-p2 residual architecture. The parent was verified as MSE `2.9311e-4`, continuous exact `1.0`, and two Boolean errors at rows 239 and 255, output bit 2.
+
+After 3000 steps, all three arms retained the same two Boolean errors. Mean BCE ended at MSE `2.005e-4`; top-16 bit BCE at `7.598e-5`; top-8 row BCE at `7.493e-5`. Top-8 row BCE lowered the difficult target-zero output bit to about `0.1795`, and top-16 bit BCE to about `0.1943`, but neither crossed the required threshold topology. Mean BCE left it around `0.3205`.
+
+Thus pure worst-case BCE did not solve the seed-3 failure. The remaining problem is consistent with a structural/saturated topology barrier rather than only mean-loss dilution. Hard-row gradients, other-row gradients, cosine alignment, mask hashes, and threshold bit transitions are archived in `research/operator_results/i4_worstcase_results.json`. The detailed report is `research/i4_worstcase_report.md`. Secondary seed-2 validation was not run; no hybrid loss was introduced.
