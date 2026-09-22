@@ -1113,3 +1113,9 @@ I4 tested the same I2-B seed3 checkpoint with three differentiable loss aggregat
 After 3000 steps, all three arms retained the same two Boolean errors. Mean BCE ended at MSE `2.005e-4`; top-16 bit BCE at `7.598e-5`; top-8 row BCE at `7.493e-5`. Top-8 row BCE lowered the difficult target-zero output bit to about `0.1795`, and top-16 bit BCE to about `0.1943`, but neither crossed the required threshold topology. Mean BCE left it around `0.3205`.
 
 Thus pure worst-case BCE did not solve the seed-3 failure. The remaining problem is consistent with a structural/saturated topology barrier rather than only mean-loss dilution. Hard-row gradients, other-row gradients, cosine alignment, mask hashes, and threshold bit transitions are archived in `research/operator_results/i4_worstcase_results.json`. The detailed report is `research/i4_worstcase_report.md`. Secondary seed-2 validation was not run; no hybrid loss was introduced.
+
+## I5 gate discretization regularization
+
+I5 continued the same verified seed-3 parent with top-8-row BCE fixed as the task loss and added only layer-balanced gate regularization. Four arms compared effective-gate polarization against a finite raw-logit margin, each at initial regularizer-to-task edge-gradient ratios of 0.10 and 0.50. Weight decay and bias regularization remained disabled.
+
+All four arms reduced gate ambiguity substantially, especially unbounded polarization, but all retained the same two Boolean errors at rows 239 and 255. The best I5 endpoint error was still worse than the I4 top-8-row control, and no Boolean topology transition occurred. Gate hardening therefore did not repair this basin; it can harden an incorrect functional topology. Results and checkpoint hashes are in `research/operator_results/i5_gate_regularization_results.json`, with analysis in `research/i5_gate_regularization_report.md`.

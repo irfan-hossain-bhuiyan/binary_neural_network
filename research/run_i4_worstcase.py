@@ -187,8 +187,15 @@ def main() -> None:
     sha = os.environ.get("RESEARCH_GIT_SHA") or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     payload = {"experiment": "I4-worstcase-endpoint-optimization", "git_sha": sha, "device": str(device), "steps": args.steps,
                "parent_checkpoint": "I2-B best_continuous_mse", "hard_rows": HARD_ROWS, "results": results}
-    (OUT / "i4_worstcase_results.json").write_text(json.dumps(payload, indent=2) + "\n")
-    print(OUT / "i4_worstcase_results.json")
+    output_path = OUT / "i4_worstcase_results.json"
+    if output_path.exists():
+        existing = json.loads(output_path.read_text())
+        if existing.get("experiment") == payload["experiment"]:
+            keys = {(r["seed"], r["arm"]) for r in results}
+            payload["results"] = [r for r in existing.get("results", []) if (r["seed"], r["arm"]) not in keys] + results
+            payload["history"] = existing.get("history", []) + [{"replaced_runs": sorted(keys), "git_sha": existing.get("git_sha")}]
+    output_path.write_text(json.dumps(payload, indent=2) + "\n")
+    print(output_path)
 
 
 if __name__ == "__main__": main()

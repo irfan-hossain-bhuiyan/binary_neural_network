@@ -18,3 +18,15 @@ access_token
 *.pth
 
 .DS_Store
+
+# Generated research caches and archives
+research/**/__pycache__/
+research/**/*.py[cod]
+research/archive/
+research/archives/
+research/**/*.zip
+research/**/*.tar
+research/**/*.tar.gz
+research/**/*.tgz
+research/**/*.7z
+research/**/*.rar
