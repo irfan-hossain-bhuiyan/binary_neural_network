@@ -158,6 +158,12 @@ def main() -> None:
     output.write_text(json.dumps(payload, indent=2) + "\n")
     manifest_path = OUT / "initialization_i2f_checkpoint_manifest.json"
     manifest_path.write_text(json.dumps({"experiment": "I2F", "git_sha": sha, "checkpoints": manifest}, indent=2) + "\n")
+    # The generic Kaggle bootstrap discovers research checkpoints through a
+    # root-level manifest.  Keep the descriptive archive beside the metrics
+    # as well as this export manifest for the remote artifact collector.
+    Path("i2_checkpoint_manifest.json").write_text(
+        json.dumps({"experiment": "I2F", "git_sha": sha, "checkpoints": manifest}, indent=2) + "\n"
+    )
     print(output)
 
 
