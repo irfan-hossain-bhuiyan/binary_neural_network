@@ -274,3 +274,16 @@ candidate for the next decision.
 - `research/figures/initialization_i2_training_curves.png`
 - `research/figures/initialization_i2_recovery.png`
 - `research/figures/initialization_i2_mse_vs_boolean.png`
+
+## I2F — missing initialization factorial cells
+
+I2F completed the four cells omitted from the first initialization factorial using the same historical B3 loop (3001 optimizer updates), Lehmer p=2, Adam at 0.01, and the complete 256-row XOR table. The Kaggle run used commit `811bf4f3aec6c88270166dadc6d082dde01e5975`; all 76 exported checkpoints match the SHA-256 manifest.
+
+| condition | recovery | median best MSE | mean final Boolean exact |
+|---|---:|---:|---:|
+| Historical edge + ONE (I2-F) | 2/5 | 0.001813 | 0.8711 |
+| Historical edge + BALANCED_POLARIZED (I2-G) | 0/5 | 0.097530 | 0.3633 |
+| MF sigma2 + CURRENT (I2-H) | 1/5 | 0.002054 | 0.7625 |
+| MF sigma4 + CURRENT (I2-I) | 2/5 | 0.019036 | 0.6688 |
+
+Adding the missing cells does not change the earlier conclusion: the historical edge/current-bias baseline remains the strongest fixed recipe. Bias near one can work with historical edges in some seeds, while balanced-polarized bias is poor here. Mean-field edges remain seed-sensitive and generally worse than the historical dense pattern. These results are archived separately from I2.

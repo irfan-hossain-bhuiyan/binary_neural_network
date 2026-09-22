@@ -1095,3 +1095,13 @@ The systematic differentiable OR-operator study is maintained separately in
 [`or_operator_research.md`](or_operator_research.md), with the pre-training
 property table in [`operator_candidates.md`](operator_candidates.md). The
 modern architecture results above, including M002b, remain unchanged.
+
+## I3 endpoint consistency and BCE continuation
+
+I3 starts from verified I2-B best-continuous checkpoints and does not alter the architecture or OR operator. The endpoint note is in `research/endpoint_consistency.md`; continuation results are in `research/operator_results/i3_endpoint_results.json`.
+
+The exact endpoint argument is conditional: XOR and Lehmer p=2 have rigid Boolean endpoints in the parameter closure, but finite sigmoid parameters do not attain gate values exactly equal to 0 or 1. Therefore finite low MSE is not itself a theorem of functional discretization.
+
+The controlled continuation used fresh identical Adam optimizers at lr .01 because the parent checkpoints did not contain optimizer state. Seed 3 started with two wrong Boolean rows. After 3000 additional steps, MSE reached 7.06e-5 with two wrong rows; BCE reached BCE 8.31e-4 but also retained two wrong rows. Seed 2 showed the contrast: MSE retained 32 wrong rows at 9.62e-4, while BCE reached 8.08e-9 MSE and zero wrong rows. Seed 4 was already Boolean-exact and remained exact; both losses reduced endpoint error further.
+
+This is evidence that BCE can sharpen a favorable basin, but it does not guarantee repair of a residual discrete mismatch. The current evidence does not support claiming that arbitrarily small average MSE alone is sufficient. Uniform endpoint error, layerwise threshold/discrete mismatch, and the zero-side safety certificate are now recorded for every continuation checkpoint.

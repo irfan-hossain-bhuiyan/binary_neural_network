@@ -1,0 +1,7 @@
+{
+  "seed": 0,
+  "trials_per_fan_in": 10000,
+  "threshold": 0.5,
+  "tolerance": 1e-10,
+  "counterexamples": []
+}

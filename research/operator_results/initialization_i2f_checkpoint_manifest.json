@@ -1,0 +1,1906 @@
+{
+  "experiment": "I2F",
+  "git_sha": "811bf4f3aec6c88270166dadc6d082dde01e5975",
+  "checkpoints": [
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed0_best_continuous_mse.pt",
+      "sha256": "fd226b7cea164e264c62c9e65b04877c66e7e2f41c0cc672042f4c5b3d09a6a7",
+      "condition": "I2-F",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.023207876831293106,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        },
+        "hard": {
+          "mse": 0.05062098801136017,
+          "bit_accuracy": 0.9345703125,
+          "exact_accuracy": 0.73828125
+        },
+        "boolean": {
+          "mse": 0.06640625,
+          "bit_accuracy": 0.93359375,
+          "exact_accuracy": 0.734375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed0_best_boolean_exact.pt",
+      "sha256": "82fb0df5bd7061ef21bb5ec314ab629f9f47dff4a5fc08b8f0fe4eeef1f65af9",
+      "condition": "I2-F",
+      "seed": 0,
+      "epoch": 1400,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.025571607053279877,
+          "bit_accuracy": 0.9599609375,
+          "exact_accuracy": 0.83984375
+        },
+        "hard": {
+          "mse": 0.05316120386123657,
+          "bit_accuracy": 0.93359375,
+          "exact_accuracy": 0.734375
+        },
+        "boolean": {
+          "mse": 0.06640625,
+          "bit_accuracy": 0.93359375,
+          "exact_accuracy": 0.734375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed0_final.pt",
+      "sha256": "ea01cdaf44c2dad65f492a2bbf981c0668aace1cfa5b3b1bcd6e6ffeeb46adc6",
+      "condition": "I2-F",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.023207876831293106,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        },
+        "hard": {
+          "mse": 0.05062098801136017,
+          "bit_accuracy": 0.9345703125,
+          "exact_accuracy": 0.73828125
+        },
+        "boolean": {
+          "mse": 0.06640625,
+          "bit_accuracy": 0.93359375,
+          "exact_accuracy": 0.734375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed1_best_continuous_mse.pt",
+      "sha256": "6eb8ddbba7c2919fa127a09dd7e1f757eb04bc5789337b75bc7cd8f1c9fdf706",
+      "condition": "I2-F",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00012159827019786462,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0003383132570888847,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed1_best_boolean_exact.pt",
+      "sha256": "5be11d465a6b132f81532b282b32d4cfc9c9026ce39e2e7f953b98ec57cba25a",
+      "condition": "I2-F",
+      "seed": 1,
+      "epoch": 450,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.011080668307840824,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.01086436677724123,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed1_mse1e-02.pt",
+      "sha256": "2f0d6edf48e23d80575587361963977700aa384fc4ae49dd5e0ce85c3f7436d9",
+      "condition": "I2-F",
+      "seed": 1,
+      "epoch": 475,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0077859205193817616,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.008149951696395874,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0029296875,
+          "bit_accuracy": 0.9970703125,
+          "exact_accuracy": 0.9921875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed1_mse1e-03.pt",
+      "sha256": "089d9312eb9ee8c80c3ade8fe21de8e1f0e196b69b942a2d5da4fcd9caa290c5",
+      "condition": "I2-F",
+      "seed": 1,
+      "epoch": 975,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009924990590661764,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0014818720519542694,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed1_final.pt",
+      "sha256": "bf4f1a30c2d33dbfc7401ebfa155f8c90e4e2c832319539703fa0a51870242d4",
+      "condition": "I2-F",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00012159827019786462,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0003383132570888847,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed2_best_continuous_mse.pt",
+      "sha256": "47bae9e8fb0f4ec1a6afe21901a1db1d841578c6bdfc2abb85a9dad8cc509d5e",
+      "condition": "I2-F",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0001394685823470354,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0002637968282215297,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed2_best_boolean_exact.pt",
+      "sha256": "d79bd4865d256b24d5790c239d8f468d13dd51f6423d27cfed620a7083ed9fb5",
+      "condition": "I2-F",
+      "seed": 2,
+      "epoch": 475,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.008325198665261269,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.008926186710596085,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed2_mse1e-02.pt",
+      "sha256": "db8d745f26b5bf7351b5806391154db4fec7519e5c858aeaae21e01bb5dc9a4f",
+      "condition": "I2-F",
+      "seed": 2,
+      "epoch": 475,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.008325198665261269,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.008926186710596085,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed2_mse1e-03.pt",
+      "sha256": "7a470dbfd84dafca7b7da08ebb65ad9cabbde2a3381ea45fbc86423ff68edc90",
+      "condition": "I2-F",
+      "seed": 2,
+      "epoch": 1050,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009807593887671828,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0015459555434063077,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed2_final.pt",
+      "sha256": "4371fcd8ee909f6ca473fde8bb152f637916c4e267b05eab26564c8453684308",
+      "condition": "I2-F",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0001394685823470354,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0002637968282215297,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed3_best_continuous_mse.pt",
+      "sha256": "0223c2895decd716f7c586ff6fa8fcd3a607e0f2e827261b0fd1249ab3e998a1",
+      "condition": "I2-F",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.014986093156039715,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.033369772136211395,
+          "bit_accuracy": 0.9365234375,
+          "exact_accuracy": 0.74609375
+        },
+        "boolean": {
+          "mse": 0.0634765625,
+          "bit_accuracy": 0.9365234375,
+          "exact_accuracy": 0.74609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed3_best_boolean_exact.pt",
+      "sha256": "3943fe50388013718cb32a412562fa28aad8c7015073754cd7c7a1d82c11be50",
+      "condition": "I2-F",
+      "seed": 3,
+      "epoch": 675,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.024858880788087845,
+          "bit_accuracy": 0.9990234375,
+          "exact_accuracy": 0.99609375
+        },
+        "hard": {
+          "mse": 0.03610498458147049,
+          "bit_accuracy": 0.9365234375,
+          "exact_accuracy": 0.74609375
+        },
+        "boolean": {
+          "mse": 0.06640625,
+          "bit_accuracy": 0.93359375,
+          "exact_accuracy": 0.74609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed3_final.pt",
+      "sha256": "e3d57c520fb4a2057ce3ba02ca0a073717dbc7c407c4a73c6edde3e06ee09ab4",
+      "condition": "I2-F",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.014986093156039715,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.033369772136211395,
+          "bit_accuracy": 0.9365234375,
+          "exact_accuracy": 0.74609375
+        },
+        "boolean": {
+          "mse": 0.0634765625,
+          "bit_accuracy": 0.9365234375,
+          "exact_accuracy": 0.74609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed4_best_continuous_mse.pt",
+      "sha256": "3efb6fb177ff842921168c6b6d87bda7585c8025a7f410ac3a2e2f4eed6c8d76",
+      "condition": "I2-F",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.001812813337892294,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.02447212114930153,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed4_best_boolean_exact.pt",
+      "sha256": "663d4be781c391b85687d3f6685de6688d9f54e11370e94e99e18985ba268a09",
+      "condition": "I2-F",
+      "seed": 4,
+      "epoch": 2200,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.002655944088473916,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.023249683901667595,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed4_mse1e-02.pt",
+      "sha256": "c07a5dd9677c38248da62205ec881add1eb4b4ab902bd154bad9557e26c0ad1b",
+      "condition": "I2-F",
+      "seed": 4,
+      "epoch": 925,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009415903128683567,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.02778085321187973,
+          "bit_accuracy": 0.9990234375,
+          "exact_accuracy": 0.99609375
+        },
+        "boolean": {
+          "mse": 0.09375,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-F_seed4_final.pt",
+      "sha256": "a3a9143b81a28eecd6dfe964de18948827a2a3458a6b9627feae17daaa06baf3",
+      "condition": "I2-F",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.001812813337892294,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.02447212114930153,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed0_best_continuous_mse.pt",
+      "sha256": "d4727c0ced5594fefd0c1941d9928c4b82e1cbadfaba3b9d2127c5f248f086a2",
+      "condition": "I2-G",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.10817952454090118,
+          "bit_accuracy": 0.876953125,
+          "exact_accuracy": 0.546875
+        },
+        "hard": {
+          "mse": 0.24879559874534607,
+          "bit_accuracy": 0.703125,
+          "exact_accuracy": 0.20703125
+        },
+        "boolean": {
+          "mse": 0.306640625,
+          "bit_accuracy": 0.693359375,
+          "exact_accuracy": 0.19921875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed0_best_boolean_exact.pt",
+      "sha256": "0eb5168c2e17f00e50d93e532d694bc35e13bdf2aef21197c23c41f30a2e286c",
+      "condition": "I2-G",
+      "seed": 0,
+      "epoch": 2675,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.12393318861722946,
+          "bit_accuracy": 0.8447265625,
+          "exact_accuracy": 0.43359375
+        },
+        "hard": {
+          "mse": 0.2760988771915436,
+          "bit_accuracy": 0.6845703125,
+          "exact_accuracy": 0.203125
+        },
+        "boolean": {
+          "mse": 0.3271484375,
+          "bit_accuracy": 0.6728515625,
+          "exact_accuracy": 0.203125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed0_final.pt",
+      "sha256": "590e1c867e6255cdf97f28cd077be51bc6019ea7c51d306da61cdd3d7b00d510",
+      "condition": "I2-G",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.10817952454090118,
+          "bit_accuracy": 0.876953125,
+          "exact_accuracy": 0.546875
+        },
+        "hard": {
+          "mse": 0.24879559874534607,
+          "bit_accuracy": 0.703125,
+          "exact_accuracy": 0.20703125
+        },
+        "boolean": {
+          "mse": 0.306640625,
+          "bit_accuracy": 0.693359375,
+          "exact_accuracy": 0.19921875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed1_best_continuous_mse.pt",
+      "sha256": "1084f462b53b5b965f9a57d2daec640543406d475df4522ac9a4381151fdf1d3",
+      "condition": "I2-G",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.14957702159881592,
+          "bit_accuracy": 0.8212890625,
+          "exact_accuracy": 0.41796875
+        },
+        "hard": {
+          "mse": 0.3447762131690979,
+          "bit_accuracy": 0.6015625,
+          "exact_accuracy": 0.1171875
+        },
+        "boolean": {
+          "mse": 0.3955078125,
+          "bit_accuracy": 0.6044921875,
+          "exact_accuracy": 0.1171875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed1_best_boolean_exact.pt",
+      "sha256": "8c5c2943702dceb0e432ef889d830df52606594bd17121df1320ad120a5f30d5",
+      "condition": "I2-G",
+      "seed": 1,
+      "epoch": 2875,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.154677152633667,
+          "bit_accuracy": 0.8134765625,
+          "exact_accuracy": 0.3828125
+        },
+        "hard": {
+          "mse": 0.35712432861328125,
+          "bit_accuracy": 0.5771484375,
+          "exact_accuracy": 0.1171875
+        },
+        "boolean": {
+          "mse": 0.4189453125,
+          "bit_accuracy": 0.5810546875,
+          "exact_accuracy": 0.125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed1_final.pt",
+      "sha256": "a8c3deaef5ed27202f815e2453a64ad3dc1497883f76eab8e1bc28fdbcc4bfec",
+      "condition": "I2-G",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.14957702159881592,
+          "bit_accuracy": 0.8212890625,
+          "exact_accuracy": 0.41796875
+        },
+        "hard": {
+          "mse": 0.3447762131690979,
+          "bit_accuracy": 0.6015625,
+          "exact_accuracy": 0.1171875
+        },
+        "boolean": {
+          "mse": 0.3955078125,
+          "bit_accuracy": 0.6044921875,
+          "exact_accuracy": 0.1171875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed2_best_continuous_mse.pt",
+      "sha256": "038607546c1cdbd0627eb90f1e4d230713722d1037cd25697861e4d1e1e162c5",
+      "condition": "I2-G",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.08394783735275269,
+          "bit_accuracy": 0.890625,
+          "exact_accuracy": 0.578125
+        },
+        "hard": {
+          "mse": 0.18589738011360168,
+          "bit_accuracy": 0.806640625,
+          "exact_accuracy": 0.421875
+        },
+        "boolean": {
+          "mse": 0.2001953125,
+          "bit_accuracy": 0.7998046875,
+          "exact_accuracy": 0.41796875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed2_best_boolean_exact.pt",
+      "sha256": "aa50552ed8a82b2c05240abcfbc1faef5a331e2ba55fffc3968edd730ebb126a",
+      "condition": "I2-G",
+      "seed": 2,
+      "epoch": 2950,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.08494395017623901,
+          "bit_accuracy": 0.888671875,
+          "exact_accuracy": 0.5703125
+        },
+        "hard": {
+          "mse": 0.18587788939476013,
+          "bit_accuracy": 0.80859375,
+          "exact_accuracy": 0.42578125
+        },
+        "boolean": {
+          "mse": 0.2001953125,
+          "bit_accuracy": 0.7998046875,
+          "exact_accuracy": 0.41796875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed2_final.pt",
+      "sha256": "e0a99b1e5b0480237502ae1a9fb1402735051cb265833cb844fb9534d8554ea0",
+      "condition": "I2-G",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.08394783735275269,
+          "bit_accuracy": 0.890625,
+          "exact_accuracy": 0.578125
+        },
+        "hard": {
+          "mse": 0.18589738011360168,
+          "bit_accuracy": 0.806640625,
+          "exact_accuracy": 0.421875
+        },
+        "boolean": {
+          "mse": 0.2001953125,
+          "bit_accuracy": 0.7998046875,
+          "exact_accuracy": 0.41796875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed3_best_continuous_mse.pt",
+      "sha256": "a63f5eb5f482270c0883303a17507832ee1268f458f0c863616b22dcb528c62f",
+      "condition": "I2-G",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.09753035008907318,
+          "bit_accuracy": 0.8818359375,
+          "exact_accuracy": 0.578125
+        },
+        "hard": {
+          "mse": 0.24142791330814362,
+          "bit_accuracy": 0.703125,
+          "exact_accuracy": 0.203125
+        },
+        "boolean": {
+          "mse": 0.2998046875,
+          "bit_accuracy": 0.7001953125,
+          "exact_accuracy": 0.203125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed3_best_boolean_exact.pt",
+      "sha256": "343fcc2d6e544627b39c9b68fcb2c58e9c29dd9d8d5f228a07cb494b2c1af24d",
+      "condition": "I2-G",
+      "seed": 3,
+      "epoch": 2925,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.09892112016677856,
+          "bit_accuracy": 0.875,
+          "exact_accuracy": 0.55859375
+        },
+        "hard": {
+          "mse": 0.24476639926433563,
+          "bit_accuracy": 0.6982421875,
+          "exact_accuracy": 0.203125
+        },
+        "boolean": {
+          "mse": 0.310546875,
+          "bit_accuracy": 0.689453125,
+          "exact_accuracy": 0.203125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed3_final.pt",
+      "sha256": "a325b0ae03d18b9515a3d182fa2f538276f6ab85c40264004ee0e1db3001312f",
+      "condition": "I2-G",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.09753035008907318,
+          "bit_accuracy": 0.8818359375,
+          "exact_accuracy": 0.578125
+        },
+        "hard": {
+          "mse": 0.24142791330814362,
+          "bit_accuracy": 0.703125,
+          "exact_accuracy": 0.203125
+        },
+        "boolean": {
+          "mse": 0.2998046875,
+          "bit_accuracy": 0.7001953125,
+          "exact_accuracy": 0.203125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed4_best_continuous_mse.pt",
+      "sha256": "812ab528368d60f146910fa75d5405cd5e8498f9bceaa7d14ba955a5c4be76e2",
+      "condition": "I2-G",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.010820982046425343,
+          "bit_accuracy": 0.986328125,
+          "exact_accuracy": 0.9453125
+        },
+        "hard": {
+          "mse": 0.034351661801338196,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        },
+        "boolean": {
+          "mse": 0.0302734375,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed4_best_boolean_exact.pt",
+      "sha256": "19e59d8026fa84aa05d85a96f01245357d52bd9af0fc866f965a7c620521d6b4",
+      "condition": "I2-G",
+      "seed": 4,
+      "epoch": 2275,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.012052121572196484,
+          "bit_accuracy": 0.986328125,
+          "exact_accuracy": 0.9453125
+        },
+        "hard": {
+          "mse": 0.03516906499862671,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.87890625
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.87890625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-G_seed4_final.pt",
+      "sha256": "bfbcb1f4fe7b6131db47072978c20093702712bbbf35166ffa1b217e91893072",
+      "condition": "I2-G",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.010820982046425343,
+          "bit_accuracy": 0.986328125,
+          "exact_accuracy": 0.9453125
+        },
+        "hard": {
+          "mse": 0.034351661801338196,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        },
+        "boolean": {
+          "mse": 0.0302734375,
+          "bit_accuracy": 0.9697265625,
+          "exact_accuracy": 0.87890625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed0_best_continuous_mse.pt",
+      "sha256": "4219102fbbb15f02ac8b24e0a64776625df131b934965c838a7690e17ceebc4c",
+      "condition": "I2-H",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0020540766417980194,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.052363794296979904,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        },
+        "boolean": {
+          "mse": 0.140625,
+          "bit_accuracy": 0.859375,
+          "exact_accuracy": 0.4375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed0_best_boolean_exact.pt",
+      "sha256": "d7ad5c36b51f621c0db04921b6e3ed2e27b2b182b2c948469f273d4d09ddd197",
+      "condition": "I2-H",
+      "seed": 0,
+      "epoch": 300,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.023799549788236618,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.07753252238035202,
+          "bit_accuracy": 0.953125,
+          "exact_accuracy": 0.8125
+        },
+        "boolean": {
+          "mse": 0.09375,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed0_mse1e-02.pt",
+      "sha256": "b4289702c34acfde46d5193ee3271c895f20d6ab5cdab981ff60a9616f51380e",
+      "condition": "I2-H",
+      "seed": 0,
+      "epoch": 475,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009855939075350761,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.05826743692159653,
+          "bit_accuracy": 0.953125,
+          "exact_accuracy": 0.8125
+        },
+        "boolean": {
+          "mse": 0.09375,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed0_final.pt",
+      "sha256": "56bd8f1f73ce637f3eff8b57d193b26f5d8a100766270da2cd39aecde11b4bbf",
+      "condition": "I2-H",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0020540766417980194,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.052363794296979904,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        },
+        "boolean": {
+          "mse": 0.140625,
+          "bit_accuracy": 0.859375,
+          "exact_accuracy": 0.4375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed1_best_continuous_mse.pt",
+      "sha256": "dead267666f2346a807db72f6c330ddd05a46af1860c4c50d097299d08ae1c12",
+      "condition": "I2-H",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.000749210303183645,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0269538015127182,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed1_best_boolean_exact.pt",
+      "sha256": "3bbf25db018c944a6d4abc660465913ee8bd898a154afdb3e7a110faf2663b53",
+      "condition": "I2-H",
+      "seed": 1,
+      "epoch": 300,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.04592709243297577,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "hard": {
+          "mse": 0.06455574929714203,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed1_mse1e-02.pt",
+      "sha256": "40015942f48630bc7655e428d4d2bcb5193c2bf0bdc31902562bab76d0d5df7f",
+      "condition": "I2-H",
+      "seed": 1,
+      "epoch": 525,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009383325465023518,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.02555813267827034,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed1_mse1e-03.pt",
+      "sha256": "8ab20cb4370a4a0a258c7fdfebfaeb0d09b7d7fe86c6bb39c9fd0671f32f12d0",
+      "condition": "I2-H",
+      "seed": 1,
+      "epoch": 2275,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009935263078659773,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.02685621567070484,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed1_final.pt",
+      "sha256": "766f8cc9eabc90daf6240c43040c1a7650388340dc6d480751bd3e38c73eeabd",
+      "condition": "I2-H",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.000749210303183645,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0269538015127182,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        },
+        "boolean": {
+          "mse": 0.03125,
+          "bit_accuracy": 0.96875,
+          "exact_accuracy": 0.875
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed2_best_continuous_mse.pt",
+      "sha256": "6ba40ef51ed66d31a9fa525934c3841c337b8a71705e57ecf620ca8f1f8a00d6",
+      "condition": "I2-H",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.002283690497279167,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.061730168759822845,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed2_best_boolean_exact.pt",
+      "sha256": "648264393cd9ceaaf6754c6af5e75449fc8d1fb413d245823415bea11fc53194",
+      "condition": "I2-H",
+      "seed": 2,
+      "epoch": 250,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0624094232916832,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.09177671372890472,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed2_mse1e-02.pt",
+      "sha256": "b4f7f1bee34493f312cbb0e89b2e1eccfbdd238389de5b0566add9936fa11d17",
+      "condition": "I2-H",
+      "seed": 2,
+      "epoch": 500,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009618990123271942,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.06215846538543701,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed2_final.pt",
+      "sha256": "85c8a22e4aa18a0e0d27c7d635506e0b61db862b81d6a1fa24973cf8a1772888",
+      "condition": "I2-H",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.002283690497279167,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.061730168759822845,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed3_best_continuous_mse.pt",
+      "sha256": "0eb4903aa5e4a100283e245234fbab0a9fb81b6fc0991b68390d94d1c6d86457",
+      "condition": "I2-H",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00015965952479746193,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0004892590804956853,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed3_best_boolean_exact.pt",
+      "sha256": "f90ebf9b9ab90884021f493d3d558afeb7c6980e0664489b3fea1eecd62e378b",
+      "condition": "I2-H",
+      "seed": 3,
+      "epoch": 300,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.025048475712537766,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.04317135736346245,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed3_mse1e-02.pt",
+      "sha256": "1f3d5165c32c18281e470473ad6b0fcceada273450628c0b37e8be9c657960e0",
+      "condition": "I2-H",
+      "seed": 3,
+      "epoch": 400,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00996376946568489,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.018969617784023285,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed3_mse1e-03.pt",
+      "sha256": "04910b3151e0fd362b68873671af889f16e0928055b507745f6b53c8c2880ab6",
+      "condition": "I2-H",
+      "seed": 3,
+      "epoch": 1175,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009981209877878428,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0025460158940404654,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed3_final.pt",
+      "sha256": "e9e4009f474a13766441c7865dc54fc1bcd49654948b5b5d7e5adb30374d2028",
+      "condition": "I2-H",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00015965952479746193,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0004892590804956853,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed4_best_continuous_mse.pt",
+      "sha256": "3c6cc248d4520774d9b18c37d56322972ed2deed5dba5dae13ad9cf2f7f7c9ba",
+      "condition": "I2-H",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.007406999357044697,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.050481654703617096,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed4_best_boolean_exact.pt",
+      "sha256": "edb5d30ecdc25d8a08a64c44673f72e1928079515d10888d44593e5027c1c4b6",
+      "condition": "I2-H",
+      "seed": 4,
+      "epoch": 450,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.025040825828909874,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.055888786911964417,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed4_mse1e-02.pt",
+      "sha256": "62f9edf3c68cbf20f8293ae96306f34c31c1878389b7043df1f4adef73792607",
+      "condition": "I2-H",
+      "seed": 4,
+      "epoch": 1300,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009892272762954235,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.057000964879989624,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-H_seed4_final.pt",
+      "sha256": "e0e5e452fde9b5d436dbfa4fe170ac322659d5baf79f552bcb2d6918c843447e",
+      "condition": "I2-H",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.007406999357044697,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.050481654703617096,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed0_best_continuous_mse.pt",
+      "sha256": "f4551abce0ace2b3016104ab8486d09fae36b21836b81095233f132cea677099",
+      "condition": "I2-I",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.01903645135462284,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.10943494737148285,
+          "bit_accuracy": 0.875,
+          "exact_accuracy": 0.65625
+        },
+        "boolean": {
+          "mse": 0.1484375,
+          "bit_accuracy": 0.8515625,
+          "exact_accuracy": 0.609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed0_best_boolean_exact.pt",
+      "sha256": "a53953ac014e3220fca13c5e0610def478915ad78df42ec978b2072a0de64ac0",
+      "condition": "I2-I",
+      "seed": 0,
+      "epoch": 425,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.03988694027066231,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.09854935109615326,
+          "bit_accuracy": 0.875,
+          "exact_accuracy": 0.65625
+        },
+        "boolean": {
+          "mse": 0.1484375,
+          "bit_accuracy": 0.8515625,
+          "exact_accuracy": 0.609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed0_final.pt",
+      "sha256": "c8249b19b20128050b20a064fff2602169ef73a42a7ad51440184b1776be2ed6",
+      "condition": "I2-I",
+      "seed": 0,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.01903645135462284,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.10943494737148285,
+          "bit_accuracy": 0.875,
+          "exact_accuracy": 0.65625
+        },
+        "boolean": {
+          "mse": 0.1484375,
+          "bit_accuracy": 0.8515625,
+          "exact_accuracy": 0.609375
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed1_best_continuous_mse.pt",
+      "sha256": "b4305ba9618dccbbb2da83a226b109fc5188ff43b8b8c24a6cb3cc806aaacd25",
+      "condition": "I2-I",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00015356839867308736,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0004826073127333075,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed1_best_boolean_exact.pt",
+      "sha256": "7c2471e21febf5988e0c280d46f284a25bbfa443c1cbec5951faf9c282d11e94",
+      "condition": "I2-I",
+      "seed": 1,
+      "epoch": 775,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.007569922134280205,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0134970061480999,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed1_mse1e-02.pt",
+      "sha256": "4dea590efe3e08d56648d3c47e93a1a669f0a2fed5f9113a54abced5b59a8492",
+      "condition": "I2-I",
+      "seed": 1,
+      "epoch": 775,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.007569922134280205,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0134970061480999,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed1_mse1e-03.pt",
+      "sha256": "fd2589925881f130ad2a6ef378fe05fe4ad73a30186df19fc81ea219a6deb374",
+      "condition": "I2-I",
+      "seed": 1,
+      "epoch": 1250,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009863624582067132,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.002373190363869071,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed1_final.pt",
+      "sha256": "da988c7e847ccb84968d50c97cac58f560f3d8de6d6d78e8b53b0dd1e9f2a1a1",
+      "condition": "I2-I",
+      "seed": 1,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.00015356839867308736,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0004826073127333075,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed2_best_continuous_mse.pt",
+      "sha256": "76e036c85173d0f3e59aa83aa5d6db5cc25b3d653cc667074628f5eb5a3729b8",
+      "condition": "I2-I",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.023572823032736778,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.1601279377937317,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        },
+        "boolean": {
+          "mse": 0.171875,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed2_best_boolean_exact.pt",
+      "sha256": "23e18746b658d43374dbbd2d84c65eaf3212c4f51e95d904e3cdebf94263ff59",
+      "condition": "I2-I",
+      "seed": 2,
+      "epoch": 800,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.03934602066874504,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.16185720264911652,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        },
+        "boolean": {
+          "mse": 0.171875,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed2_final.pt",
+      "sha256": "b09ab4c8672976b20f550c524920ae876830ebd5e4c09715b4ff65432379c1cf",
+      "condition": "I2-I",
+      "seed": 2,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.023572823032736778,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.1601279377937317,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        },
+        "boolean": {
+          "mse": 0.171875,
+          "bit_accuracy": 0.828125,
+          "exact_accuracy": 0.40625
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed3_best_continuous_mse.pt",
+      "sha256": "60f944ba5a5f5e7a4db159a5662dfb8be3d50c17bab40d7d7a75b67205b6b8dc",
+      "condition": "I2-I",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.06032349169254303,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        },
+        "hard": {
+          "mse": 0.1318671703338623,
+          "bit_accuracy": 0.8125,
+          "exact_accuracy": 0.453125
+        },
+        "boolean": {
+          "mse": 0.2265625,
+          "bit_accuracy": 0.7734375,
+          "exact_accuracy": 0.328125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed3_best_boolean_exact.pt",
+      "sha256": "c3f2e5ce2b195ad53df74a9e87a5bad0a1f9396cfbd2638874ae9f7f7868a669",
+      "condition": "I2-I",
+      "seed": 3,
+      "epoch": 600,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.08351251482963562,
+          "bit_accuracy": 0.875,
+          "exact_accuracy": 0.5
+        },
+        "hard": {
+          "mse": 0.1439753770828247,
+          "bit_accuracy": 0.78125,
+          "exact_accuracy": 0.34375
+        },
+        "boolean": {
+          "mse": 0.2265625,
+          "bit_accuracy": 0.7734375,
+          "exact_accuracy": 0.328125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed3_final.pt",
+      "sha256": "0f7efa6cbf404b3265610754d6fb033bd149778a1cc6cf323a7d4d3a4ae5e93b",
+      "condition": "I2-I",
+      "seed": 3,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.06032349169254303,
+          "bit_accuracy": 0.90625,
+          "exact_accuracy": 0.625
+        },
+        "hard": {
+          "mse": 0.1318671703338623,
+          "bit_accuracy": 0.8125,
+          "exact_accuracy": 0.453125
+        },
+        "boolean": {
+          "mse": 0.2265625,
+          "bit_accuracy": 0.7734375,
+          "exact_accuracy": 0.328125
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed4_best_continuous_mse.pt",
+      "sha256": "cfc76e32e7a33cbf199380c49e01d9f6eadeb7161fb792b77ebdc017cf8677e0",
+      "condition": "I2-I",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "best_continuous_mse",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0001335225097136572,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0006939570885151625,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed4_best_boolean_exact.pt",
+      "sha256": "424d06974f74da490267c542db47e8bcc9b280833ac5ad16363f9ab300598e90",
+      "condition": "I2-I",
+      "seed": 4,
+      "epoch": 1025,
+      "kind": "best_boolean_exact",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0016536653274670243,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.01205348502844572,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed4_mse1e-02.pt",
+      "sha256": "b1b7ea9addada615c068f6ce3d30ffb9f6675bdedea77432e93ef2c3302134db",
+      "condition": "I2-I",
+      "seed": 4,
+      "epoch": 575,
+      "kind": "mse1e-02",
+      "metrics": {
+        "continuous": {
+          "mse": 0.009720380418002605,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.043282173573970795,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        },
+        "boolean": {
+          "mse": 0.0625,
+          "bit_accuracy": 0.9375,
+          "exact_accuracy": 0.75
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed4_mse1e-03.pt",
+      "sha256": "3e723332cc0c6a66a089e5306ceae59d38bf8af08c5f99b1a24b3adab9a7f80e",
+      "condition": "I2-I",
+      "seed": 4,
+      "epoch": 1150,
+      "kind": "mse1e-03",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0009954245761036873,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.006030749529600143,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    },
+    {
+      "checkpoint": "/kaggle/working/repo/research/operator_results/initialization_i2f_checkpoints/I2F_I2-I_seed4_final.pt",
+      "sha256": "0401df3927c39e8777fce64cefc0d55637b8090b521793213d04391ee9156911",
+      "condition": "I2-I",
+      "seed": 4,
+      "epoch": 3000,
+      "kind": "final",
+      "metrics": {
+        "continuous": {
+          "mse": 0.0001335225097136572,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "hard": {
+          "mse": 0.0006939570885151625,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        },
+        "boolean": {
+          "mse": 0.0,
+          "bit_accuracy": 1.0,
+          "exact_accuracy": 1.0
+        }
+      }
+    }
+  ]
+}
