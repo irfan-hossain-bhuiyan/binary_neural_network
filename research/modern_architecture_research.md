@@ -1119,3 +1119,10 @@ Thus pure worst-case BCE did not solve the seed-3 failure. The remaining problem
 I5 continued the same verified seed-3 parent with top-8-row BCE fixed as the task loss and added only layer-balanced gate regularization. Four arms compared effective-gate polarization against a finite raw-logit margin, each at initial regularizer-to-task edge-gradient ratios of 0.10 and 0.50. Weight decay and bias regularization remained disabled.
 
 All four arms reduced gate ambiguity substantially, especially unbounded polarization, but all retained the same two Boolean errors at rows 239 and 255. The best I5 endpoint error was still worse than the I4 top-8-row control, and no Boolean topology transition occurred. Gate hardening therefore did not repair this basin; it can harden an incorrect functional topology. Results and checkpoint hashes are in `research/operator_results/i5_gate_regularization_results.json`, with analysis in `research/i5_gate_regularization_report.md`.
+
+
+## I6 Lehmer/Boolean OR consistency
+
+I6 traced the two remaining seed-3 errors through the complete network. The head's dominant source was neuron 62, but the failure was upstream: its relaxed block1 residual value was about `.596` while the exact discrete source was zero. The continuous head contribution was about `.40`, whereas hard propagation produced about `.74`; this was classified as a TYPE-U continuous/discrete source mismatch rather than a head-local `F<.5, max(v)>=.5` violation.
+
+A causal Boolean search found a one-bit exact repair: flip `block1.layer2` edge `[out=62,in=10]` from 0 to 1. No single head flip or pair of head flips was exact. A threshold-consistency continuation on block1.layer2 improved E_inf from `.1795` to `.1705` but retained both Boolean errors, confirming that the proposed Lehmer/max penalty does not directly address the upstream mismatch. Forensic traces, repair search, and continuation checkpoints are in `research/operator_results/i6_or_consistency_results.json` and `research/i6_or_consistency_report.md`.

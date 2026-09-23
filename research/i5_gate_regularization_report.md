@@ -16,7 +16,7 @@ scheduler, noise, or bias regularization:
 | `polar_rho0.10` | layer-balanced `mean(4*g*(1-g))` | .10 | 0.2866260 | 1.4267e-4 | 0.2441 | 2 |
 | `polar_rho0.50` | layer-balanced `mean(4*g*(1-g))` | .50 | 1.4331301 | 0.1616e-3 | 0.2669 | 2 |
 | `margin4_rho0.10` | layer-balanced `mean((relu(4-|r|)/4)^2)` | .10 | 0.3579759 | 1.4552e-4 | 0.2354 | 2 |
-| `margin4_rho0.50` | layer-balanced `mean((relu(4-|r|)/4)^2)` | .50 | 1.4678e-4 | 0.2484 | 2 |
+| `margin4_rho0.50` | layer-balanced `mean((relu(4-|r|)/4)^2)` | .50 | 1.7898797 | 1.4678e-4 | 0.2484 | 2 |
 
 The task/regularizer gradient ratios at step zero were respectively `.10`,
 `.50`, `.10`, and `.50` (within floating point tolerance).  Each arm has 17
@@ -115,4 +115,3 @@ run was started.
   `i5_boolean_wrong_rows.png`, `i5_gate_distance.png`
 - Runner: `research/run_i5_gate_regularization.py`
 - Tests: `research/tests/test_i5_regularizers.py`
-
