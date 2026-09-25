@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 ROOT=Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT)); torch.set_num_threads(1)
 from research.boolean_tasks import build_task
-from research.run_a3_tolerance_loss import make_model, metric, evaluate, gradient_diagnostics
+from research.run_a3_tolerance_loss import make_model, metric, evaluate, forward_trace
 
 SEEDS=(0,1,2,3,4); STEPS=6000; LAMBDA=1.5
 EVAL_STEPS=set([0,*range(25,501,25),*range(550,6001,50),1000,2000,3000,4000,5000,6000])
@@ -63,6 +63,16 @@ def component_gradients(model,x,y):
   uu=u.reshape(-1); vv=v.reshape(-1); per.append({"layer":i,"mse_l2":float(uu.norm()),"gini_l2":float(vv.norm()),"cosine":float(F.cosine_similarity(uu.reshape(1,-1),vv.reshape(1,-1)).item()) if uu.norm()>0 and vv.norm()>0 else 0.0})
  return {"mse_loss":float(mse.detach()),"gini_loss":float(gini.detach()),"mse_raw_edge_l2":float(a.norm()),"gini_raw_edge_l2":float(b.norm()),"cosine":float(F.cosine_similarity(a.reshape(1,-1),b.reshape(1,-1)).item()) if a.norm()>0 and b.norm()>0 else 0.0,"layers":per}
 
+def residual_gradient_diagnostics(model,x,y,kind):
+ out,traces=forward_trace(model,x); loss=loss_value(out,y,kind); blocks=[]
+ for i,xin,branch,yout in traces:
+  gy=torch.autograd.grad(loss,yout,retain_graph=True)[0]
+  gx=torch.autograd.grad(loss,xin,retain_graph=True)[0]
+  direct=(1-2*branch)*gy
+  gbranch=torch.autograd.grad(branch,xin,grad_outputs=(1-2*xin)*gy,retain_graph=True)[0]
+  blocks.append({"block":i,"grad_input_l2":float(gx.norm()),"grad_output_l2":float(gy.norm()),"grad_input_output_ratio":float(gx.norm()/gy.norm().clamp_min(1e-20)),"mean_abs_input_output_ratio":float(gx.abs().mean()/gy.abs().mean().clamp_min(1e-20)),"mean_abs_direct_gain":float((1-2*branch).detach().abs().mean()),"direct_l2":float(direct.norm()),"branch_l2":float(gbranch.norm()),"direct_over_total":float(direct.norm()/gx.norm().clamp_min(1e-20)),"branch_over_total":float(gbranch.norm()/gx.norm().clamp_min(1e-20)),"direct_branch_cosine":float(F.cosine_similarity(direct.reshape(1,-1),gbranch.reshape(1,-1)).item()),"decomposition_relative_error":float((gx-direct-gbranch).norm()/gx.norm().clamp_min(1e-20)),"branch_mean_min":float(torch.minimum(branch,1-branch).detach().mean()),"branch_fraction_lt_0_1":float((branch.detach()<.1).float().mean()),"branch_fraction_gt_0_9":float((branch.detach()>.9).float().mean()),"branch_fraction_mid_0_4_0_6":float(((branch.detach()>=.4)&(branch.detach()<=.6)).float().mean())})
+ return {"loss":float(loss.detach()),"blocks":blocks}
+
 def error_stats(out,y):
  e=(out-y).square().mean(dim=1); hist=torch.histc(e.detach(),bins=HIST_BINS,min=0,max=1)
  qs=torch.quantile(e.detach(),torch.tensor([.5,.75,.9,.95,.99],device=e.device))
@@ -75,7 +85,7 @@ def record(model,x,y,chain,step,core,ref_masks,loss_kind,full=False):
  with torch.no_grad(): out=model(x)
  ev=evaluate(model,x,y,chain); c=ev["continuous"]; rec={"step":step,"core_seconds":core,"native_loss":float(loss_value(out,y,loss_kind).detach()),"mse_loss":float(loss_parts(out,y)[0].detach()),"gini_loss":float(loss_parts(out,y)[1].detach()),"continuous_exact":c["exact_accuracy"],"continuous_bit":c["bit_accuracy"],"hard_exact":ev["hard"]["exact_accuracy"],"boolean_exact":ev["boolean"]["exact_accuracy"],"e_inf":c["e_inf"],"bit_disagreement":ev["bit_disagreement_fraction"],"row_disagreement":ev["row_disagreement_fraction"],"mean_hamming":ev["mean_hamming_continuous_to_boolean"],"error_distribution":error_stats(out,y),"polarization":polarization(out),"topology":topo(masks(model),ref_masks),"continuous_per_bit":c["per_bit_accuracy"],"boolean_per_bit":ev["boolean"]["per_bit_accuracy"]}
  if full:
-  rec["continuous_carry_chain"]={k:{"exact":v["exact_accuracy"],"bit":v["bit_accuracy"]} for k,v in c["carry_chain"].items()}; rec["boolean_carry_chain"]={k:{"exact":v["exact_accuracy"],"bit":v["bit_accuracy"]} for k,v in ev["boolean"]["carry_chain"].items()}; rec["gradient_diagnostics"]=gradient_diagnostics(model,x,y,loss_kind); rec["component_gradients"]=component_gradients(model,x,y)
+  rec["continuous_carry_chain"]={k:{"exact":v["exact_accuracy"],"bit":v["bit_accuracy"]} for k,v in c["carry_chain"].items()}; rec["boolean_carry_chain"]={k:{"exact":v["exact_accuracy"],"bit":v["bit_accuracy"]} for k,v in ev["boolean"]["carry_chain"].items()}; rec["gradient_diagnostics"]=residual_gradient_diagnostics(model,x,y,loss_kind); rec["component_gradients"]=component_gradients(model,x,y)
  return rec
 
 def train(seed,initial,x,y,chain,device,arm):

@@ -5,7 +5,7 @@
   "enable_gpu": true,
   "enable_internet": true,
   "enable_tpu": false,
-  "id": "irfanhossainbhuiyan/a5-target-aware-gini",
+  "id": "irfanhossainbhuiyan/a5-target-aware-mse-gini",
   "is_private": true,
   "kernel_sources": [],
   "kernel_type": "script",
