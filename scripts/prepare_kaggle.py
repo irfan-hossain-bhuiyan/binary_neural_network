@@ -218,6 +218,8 @@ def main() -> None:
             metrics_name = "research/operator_results/a3_tolerance_loss_results.json"
         elif ENTRY.endswith("run_a4_staged_tolerance.py"):
             metrics_name = "research/operator_results/a4_staged_tolerance_results.json"
+        elif ENTRY.endswith("run_a5_target_gini.py"):
+            metrics_name = "research/operator_results/a5_target_gini_results.json"
         else:
             metrics_name = "b3_kaggle_metrics.json"
         metrics_file = REPO_DIR / metrics_name

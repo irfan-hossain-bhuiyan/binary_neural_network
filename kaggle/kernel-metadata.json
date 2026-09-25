@@ -5,12 +5,12 @@
   "enable_gpu": true,
   "enable_internet": true,
   "enable_tpu": false,
-  "id": "irfanhossainbhuiyan/a4-staged-tolerance-loss",
+  "id": "irfanhossainbhuiyan/a5-target-aware-gini",
   "is_private": true,
   "kernel_sources": [],
   "kernel_type": "script",
   "language": "python",
   "machine_shape": "NvidiaTeslaT4",
   "model_sources": [],
-  "title": "A4 Staged Tolerance Loss"
+  "title": "A5 Target Aware MSE Gini"
 }
