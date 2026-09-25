@@ -1,0 +1,12 @@
+{
+  "bit_accuracy": 1.0,
+  "exact_row_accuracy": 1.0,
+  "rows": 256,
+  "architecture": {
+    "input_dim": 8,
+    "width": 64,
+    "blocks": 2,
+    "output_dim": 5,
+    "residual_enabled": true
+  }
+}
