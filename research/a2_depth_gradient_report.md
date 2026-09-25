@@ -2,7 +2,7 @@
 
 ## A. A1 baseline and audit
 
-A1 is the latest completed benchmark before A2. Its canonical JSON, report, and task tests agreed; no A1 rerun was required. A1 selected **MSE** for A2 because all requested recovery rates were zero, while MSE had the strongest task-independent final continuous result (highest continuous exact rate and lowest E_inf). Native objective magnitudes were not used.
+A1 is the latest completed benchmark before A2. Its canonical JSON, report, and task tests agreed; no A1 rerun was required. A1 selected **MSE** for A2 because all requested recovery rates were zero, while MSE had the strongest task-independent final continuous result (highest continuous exact rate and lowest E_inf). Native objective magnitudes were not used. The first A2 GPU submission aborted before training because the discrete evaluation module remained on CPU; that run produced no scientific data. Device placement was corrected and the 27-run matrix was rerun from commit `b711fca`.
 
 A2 Kaggle commit: `b711fcae2d5ebb432a2ee10d8e6882d0760e4b30`; device `cuda` (Tesla T4). Raw result SHA256: `e869f0c08235243d3f81aa6a544241fd875a02e2d6c2293dce9b47bc475d6003`.
 

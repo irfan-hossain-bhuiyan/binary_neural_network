@@ -128,7 +128,7 @@ def report(data: dict):
     lines = [
         "# A2 — XOR-Residual Depth / Gradient Propagation\n",
         "## A. A1 baseline and audit\n",
-        "A1 is the latest completed benchmark before A2. Its canonical JSON, report, and task tests agreed; no A1 rerun was required. A1 selected **MSE** for A2 because all requested recovery rates were zero, while MSE had the strongest task-independent final continuous result (highest continuous exact rate and lowest E_inf). Native objective magnitudes were not used.\n",
+        "A1 is the latest completed benchmark before A2. Its canonical JSON, report, and task tests agreed; no A1 rerun was required. A1 selected **MSE** for A2 because all requested recovery rates were zero, while MSE had the strongest task-independent final continuous result (highest continuous exact rate and lowest E_inf). Native objective magnitudes were not used. The first A2 GPU submission aborted before training because the discrete evaluation module remained on CPU; that run produced no scientific data. Device placement was corrected and the 27-run matrix was rerun from commit `b711fca`.\n",
         f"A2 Kaggle commit: `{data.get('git_sha')}`; device `{data.get('runtime', {}).get('device')}` ({data.get('runtime', {}).get('gpu')}). Raw result SHA256: `{data.get('source_provenance', {}).get('raw_result_sha256')}`.\n",
         "## B. Architecture matrix\n",
         "All runs use input 8, width 64, output 5, Lehmer-p2, I2-B mean-field sigma=2 plus BIAS_ONE, full-batch Adam (lr=.01, 3000 updates), and seeds 0–2. Depths are 0, 1, 2, 4, and 8 two-layer width-preserving blocks. Depth 0 has no residual factorial; positive depths have matched XOR_RESIDUAL and NO_RESIDUAL arms. No checkpoints were retained.\n",
