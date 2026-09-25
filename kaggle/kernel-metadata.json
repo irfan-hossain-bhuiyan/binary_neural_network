@@ -5,12 +5,12 @@
   "enable_gpu": true,
   "enable_internet": true,
   "enable_tpu": false,
-  "id": "irfanhossainbhuiyan/a2-depth-gradient-propagation",
+  "id": "irfanhossainbhuiyan/a3-tolerance-loss",
   "is_private": true,
   "kernel_sources": [],
   "kernel_type": "script",
   "language": "python",
   "machine_shape": "NvidiaTeslaT4",
   "model_sources": [],
-  "title": "A2 Depth Gradient Propagation"
+  "title": "A3 Boolean Tolerance Loss"
 }
