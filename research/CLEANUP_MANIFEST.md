@@ -10,8 +10,8 @@ No scientific training run was performed as part of cleanup.
 
 | Measure | Before | After | Change |
 |---|---:|---:|---:|
-| Repository files (excluding `.git`) | 1,348,387,131 bytes | 488,093,504 bytes | -860,293,627 bytes |
-| `research/` files | 461,037,615 bytes | 124,221,848 bytes | -336,815,767 bytes |
+| Repository files (excluding `.git`) | 1,348,387,131 bytes | 488,096,565 bytes | -860,290,566 bytes |
+| `research/` files | 461,037,615 bytes | 124,224,802 bytes | -336,812,813 bytes |
 
 The final repository total includes retained external dataset/model assets in
 `artifacts/`; those are not part of the research source snapshot and remain
