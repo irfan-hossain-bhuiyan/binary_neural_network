@@ -12,5 +12,5 @@
   "language": "python",
   "machine_shape": "NvidiaTeslaT4",
   "model_sources": [],
-  "title": "A1 Exact Binary Addition"
+  "title": "A2 Depth Gradient Propagation"
 }
