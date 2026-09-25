@@ -1,6 +1,5 @@
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
 artifacts/
 kaggle/output/
@@ -16,8 +15,31 @@ access_token
 
 *.pt
 *.pth
+*.ckpt
 
 .DS_Store
+
+# Test/tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.rag_db/
+
+# Editor and temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Generated Kaggle bundles
+kaggle/m1_repo/
+kaggle/m2_repo/
+kaggle/m1_train.py
+kaggle/m2_train.py
 
 # Generated research caches and archives
 research/**/__pycache__/

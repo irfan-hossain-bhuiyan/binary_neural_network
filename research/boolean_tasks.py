@@ -124,6 +124,76 @@ def build_full_adder(params: dict, seed: int = 0) -> dict:
                       "1-bit full adder: sum = a^b^cin, cout = majority")
 
 
+def binary_addition_targets_integer(X: torch.Tensor, bits: int) -> torch.Tensor:
+    """Build LSB-first addition targets with integer arithmetic."""
+    weights = 2 ** torch.arange(bits, dtype=torch.long, device=X.device)
+    a = (X[:, :bits].to(torch.long) * weights).sum(dim=1)
+    b = (X[:, bits:2 * bits].to(torch.long) * weights).sum(dim=1)
+    total = a + b
+    output_weights = 2 ** torch.arange(bits + 1, dtype=torch.long, device=X.device)
+    return ((total.unsqueeze(1) // output_weights) % 2).to(torch.float32)
+
+
+def binary_addition_targets_ripple(X: torch.Tensor, bits: int) -> torch.Tensor:
+    """Build LSB-first addition targets with ripple-carry Boolean equations."""
+    a = X[:, :bits].bool()
+    b = X[:, bits:2 * bits].bool()
+    carry = torch.zeros(X.shape[0], dtype=torch.bool, device=X.device)
+    output = []
+    for i in range(bits):
+        output.append(a[:, i] ^ b[:, i] ^ carry)
+        carry = (a[:, i] & b[:, i]) | (a[:, i] & carry) | (b[:, i] & carry)
+    output.append(carry)
+    return torch.stack(output, dim=1).to(torch.float32)
+
+
+def binary_addition_carry_chain_lengths(X: torch.Tensor, bits: int) -> torch.Tensor:
+    """Return the longest generated-carry chain for each LSB-first row.
+
+    A chain starts at a bit that generates an outgoing carry and counts that
+    carry plus consecutive propagate bits at higher positions. Rows with no
+    generated carry have chain length zero.
+    """
+    a = X[:, :bits].bool()
+    b = X[:, bits:2 * bits].bool()
+    generate = a & b
+    propagate = a ^ b
+    lengths = torch.zeros(X.shape[0], dtype=torch.long, device=X.device)
+    for start in range(bits):
+        length = torch.zeros(X.shape[0], dtype=torch.long, device=X.device)
+        active = generate[:, start].clone()
+        length[active] = 1
+        for position in range(start + 1, bits):
+            active = active & propagate[:, position]
+            length[active] += 1
+        lengths = torch.maximum(lengths, length)
+    return lengths
+
+
+def build_binary_addition(params: dict, seed: int = 0) -> dict:
+    """Complete truth table for unsigned ``bits``-bit binary addition."""
+    bits = int(params.get("bits", 4))
+    if bits < 1 or bits > 8:
+        raise ValueError(f"binary addition supports 1..8 bits, got {bits}")
+    X = _all_binary_rows(2 * bits)
+    Y_integer = binary_addition_targets_integer(X, bits)
+    Y_ripple = binary_addition_targets_ripple(X, bits)
+    if not torch.equal(Y_integer, Y_ripple):
+        raise AssertionError("integer and ripple-carry addition targets disagree")
+    return _task_dict(
+        "binary_addition",
+        {"bits": bits, "input_order": "a0..a(bits-1),b0..b(bits-1)",
+         "output_order": "s0..s(bits)"},
+        X,
+        Y_integer,
+        FULL_TRUTH_TABLE,
+        f"unsigned {bits}-bit addition with LSB-first inputs and outputs",
+        carry_chain_length=binary_addition_carry_chain_lengths(X, bits),
+        target_integer=Y_integer,
+        target_ripple=Y_ripple,
+    )
+
+
 def build_compare_unsigned(params: dict, seed: int = 0) -> dict:
     bits = int(params.get("bits", 3))
     X = _all_binary_rows(2 * bits)
@@ -187,6 +257,7 @@ TASK_BUILDERS = {
     "majority": build_majority,
     "multiplexer4": build_multiplexer4,
     "full_adder": build_full_adder,
+    "binary_addition": build_binary_addition,
     "compare_unsigned": build_compare_unsigned,
     "bitwise_xor": build_bitwise_xor,
     "bitwise_xor_truth_table": build_bitwise_xor_truth_table,

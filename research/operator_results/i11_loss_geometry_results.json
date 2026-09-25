@@ -19283,7 +19283,7 @@
           "eta": 0.0,
           "step": 3000,
           "initial_state_sha256": "9fe12ddd7c1e003c794d990533a7ecc44d5d729c7f6b3f5018b95c8243bad031",
-          "git_sha": "9c52ba94ed4e393e3356f86d9fd2525e95018563"
+          "git_sha": "aa853548ca3a12cf815d67426976b00eb5b70ae0"
         },
         "best_clean_boolean": {
           "path": "/home/irfan/projects/research/binary_neural_network/binary_neural_network_transformer/research/operator_results/i11_loss_geometry_checkpoints/I11_seed3_MSE_eta0.0_best_clean_boolean.pt",
@@ -19345,7 +19345,7 @@
           "eta": 0.0,
           "step": 1000,
           "initial_state_sha256": "9fe12ddd7c1e003c794d990533a7ecc44d5d729c7f6b3f5018b95c8243bad031",
-          "git_sha": "9c52ba94ed4e393e3356f86d9fd2525e95018563"
+          "git_sha": "aa853548ca3a12cf815d67426976b00eb5b70ae0"
         },
         "final": {
           "path": "/home/irfan/projects/research/binary_neural_network/binary_neural_network_transformer/research/operator_results/i11_loss_geometry_checkpoints/I11_seed3_MSE_eta0.0_final.pt",
@@ -19407,7 +19407,7 @@
           "eta": 0.0,
           "step": 3000,
           "initial_state_sha256": "9fe12ddd7c1e003c794d990533a7ecc44d5d729c7f6b3f5018b95c8243bad031",
-          "git_sha": "9c52ba94ed4e393e3356f86d9fd2525e95018563"
+          "git_sha": "aa853548ca3a12cf815d67426976b00eb5b70ae0"
         }
       }
     },

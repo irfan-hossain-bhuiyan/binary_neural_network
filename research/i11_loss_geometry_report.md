@@ -75,7 +75,7 @@ Clean eta=0 Boolean results:
 - `BCE`: 64 wrong rows.
 - `MAE`: 170 wrong rows.
 
-Under noise, power 1.25 retained the best Boolean accuracy at eta=.1 and .2, while BCE and MSE moved toward their conditional probabilities. At eta=.4, all methods suffered substantial clean-function degradation; power 1.25 remained better than MSE/BCE/MAE but was not exact.
+Under noise, POWER_1_5 was better at eta=.1 (0.9765625 exact, 6 wrong rows, versus POWER_1_25 at 0.890625 exact and 28 wrong rows). POWER_1_25 was better at eta=.2 (0.85546875 versus 0.71484375) and eta=.4 (0.6796875 versus 0.25390625). This is an optimization-hardness/Boolean-sharpening tradeoff, not monotonic dominance by the smaller exponent. BCE and MSE moved toward their conditional probabilities. At eta=.4, all methods suffered substantial clean-function degradation.
 
 ## E. Theoretical versus observed confidence
 

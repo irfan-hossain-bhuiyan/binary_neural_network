@@ -1,1 +1,16 @@
-{"code_file": "train.py", "competition_sources": [], "dataset_sources": [], "enable_gpu": true, "enable_internet": true, "enable_tpu": false, "id": "irfanhossainbhuiyan/binary-neural-network-research", "is_private": true, "kernel_sources": [], "kernel_type": "script", "language": "python", "machine_shape": "NvidiaTeslaT4", "model_sources": [], "title": "Binary Neural Network Research"}
+{
+  "code_file": "m2_train.py",
+  "competition_sources": [],
+  "dataset_sources": [],
+  "enable_gpu": true,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "id": "irfanhossainbhuiyan/binary-neural-network-research",
+  "is_private": true,
+  "kernel_sources": [],
+  "kernel_type": "script",
+  "language": "python",
+  "machine_shape": "NvidiaTeslaT4",
+  "model_sources": [],
+  "title": "M2 Balanced MNIST Loss"
+}

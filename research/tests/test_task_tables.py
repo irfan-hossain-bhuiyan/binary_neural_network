@@ -7,6 +7,8 @@ reference implementation of the Boolean function.
 import sys
 from pathlib import Path
 
+import torch
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -80,6 +82,29 @@ def test_full_adder():
     for x, y in zip(_rows(t["X"]), _rows(t["Y"])):
         a, b, cin = x
         assert y == (a ^ b ^ cin, 1 if a + b + cin >= 2 else 0), x
+
+
+def test_binary_addition_integer_and_ripple_targets_agree():
+    from boolean_tasks import (
+        binary_addition_carry_chain_lengths,
+        binary_addition_targets_integer,
+        binary_addition_targets_ripple,
+    )
+
+    task = build_task("binary_addition", {"bits": 4})
+    assert task["X"].shape == (256, 8)
+    assert task["Y"].shape == (256, 5)
+    assert torch.equal(task["target_integer"], task["target_ripple"])
+    assert torch.equal(
+        task["Y"], binary_addition_targets_integer(task["X"], 4)
+    )
+    assert torch.equal(
+        task["Y"], binary_addition_targets_ripple(task["X"], 4)
+    )
+    chain = binary_addition_carry_chain_lengths(task["X"], 4)
+    assert int(chain.min()) == 0
+    assert int(chain.max()) == 4
+    assert set(chain.tolist()) == {0, 1, 2, 3, 4}
 
 
 def test_compare_unsigned():
