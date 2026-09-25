@@ -69,7 +69,7 @@ def train_branch(seed,branch,base_model,base_opt,prefix_trajectory,x,y,chain,dev
     model=make_model(seed,device); model.load_state_dict(copy.deepcopy(base_model.state_dict())); opt=torch.optim.Adam(model.parameters(),lr=.01,weight_decay=0.0); opt.load_state_dict(copy.deepcopy(base_opt.state_dict()))
     model_hash=state_hash(snapshot(model)); opt_hash=state_hash(opt.state_dict()); core=0.; times=[]; trajectory=[]; events=[]; prior_bool=None
     # Switch record is copied from common prefix, then branch evaluations begin.
-    switch_rec=evaluate(model,x,y,chain); switch_full=full_milestone(switch_rec,model,x,y,chain,loss_name,switch_masks,2000); trajectory.append(switch_full); prior_bool=switch_rec["boolean"]["exact_accuracy"]
+    switch_rec=evaluate(model,x,y,chain); switch_rec.update({"step":2000,"core_seconds":0.0}); switch_full=full_milestone(switch_rec,model,x,y,chain,loss_name,switch_masks,2000); trajectory.append(switch_full); prior_bool=switch_rec["boolean"]["exact_accuracy"]
     for step in sorted(POST_EVAL):
         while (step - (2000 if not times else 2000)) > len(times):
             t=time.perf_counter(); opt.zero_grad(set_to_none=True); loss=loss_value(model(x),y,loss_name); loss.backward(); opt.step(); core+=time.perf_counter()-t; times.append(time.perf_counter()-t)
