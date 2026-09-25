@@ -71,7 +71,18 @@ def report(d):
     lines += ["\n### Per-seed final metrics\n","| seed | loss | cont exact | Bool exact | E_inf | rows d<.25 | rows d<.10 | wrong Boolean rows |\n|---:|---|---:|---:|---:|---:|---:|---:|"]
     for r in d["results"]:
         f=r["final"];lines.append(f"| {r['seed']} | {r['loss']} | {f['continuous']['exact_accuracy']:.6f} | {f['boolean']['exact_accuracy']:.6f} | {f['continuous']['e_inf']:.6g} | {f['continuous']['row_tolerance_fractions']['0.25']:.4f} | {f['continuous']['row_tolerance_fractions']['0.1']:.4f} | {f['boolean']['wrong_rows']} |")
-    lines += ["\nNative losses are not ranked by magnitude. Time-to-target fields are `NOT_REACHED` when conditions did not occur. `a3_loss_shapes.png` and `a3_loss_gradients.png` show the rational, softplus, and diagnostic sigmoid geometry. `a3_gradient_sparsity.png` records the output-level sparsity introduced by row max; the canonical JSON also contains per-output gradient norms and max-credit frequencies at diagnostic steps.\n","Carry-chain exactness, worst-bit distributions, continuous-to-Boolean disagreement, hard-max metrics, and A2-style internal gradient transfer are retained per trajectory in the canonical JSON.\n","**Recommended next experiment:** use the evidence here to choose whether a staged ordinary-loss → tolerance-loss continuation is warranted; do not add it automatically.\n"]
+    lines += ["\n### Output-gradient sparsity and worst-bit routing\n", "| loss | step | nonzero output-gradient fraction | s0 | s1 | s2 | s3 | s4 |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for loss,rs in by.items():
+        for step in (0,500,3000):
+            es=[next(e for e in r["trajectory"] if e["step"]==step) for r in rs]
+            sparse=statistics.mean(e["output_gradient_sparsity"]["fraction_nonzero_output_gradient"] for e in es)
+            bits=[statistics.mean(e["output_gradient_sparsity"]["max_credit_bit_fraction"][i] for e in es) for i in range(5)]
+            lines.append("| %s | %d | %.4f | %s |" % (loss,step,sparse," | ".join(f"{v:.3f}" for v in bits)))
+    lines += ["\nRow-max arms route output gradient through exactly one worst bit per row (about 20% of output elements initially and at the final diagnostic); bit-mean rational remains dense. The worst-bit frequency shifts toward higher-order bits during training, especially for row-max rational.\n", "### Final Boolean carry-chain accuracy (seed means)\n", "| loss | chain 0 | chain 1 | chain 2 | chain 3 | chain 4 |", "|---|---:|---:|---:|---:|---:|"]
+    for loss,rs in by.items():
+        vals=[statistics.mean(r["final"]["boolean"]["carry_chain"][str(i)]["exact_accuracy"] for r in rs) for i in range(5)]
+        lines.append("| %s | %s |" % (loss," | ".join(f"{v:.3f}" for v in vals)))
+    lines += ["\nNative losses are not ranked by magnitude. Time-to-target fields are `NOT_REACHED` when conditions did not occur. `a3_loss_shapes.png` and `a3_loss_gradients.png` show the rational, softplus, and diagnostic sigmoid geometry.\n","Carry-chain exactness, continuous-to-Boolean disagreement, hard-max metrics, and A2-style internal gradient transfer are retained per trajectory in the canonical JSON.\n","**Recommended next experiment:** use the evidence here to choose whether a staged ordinary-loss → tolerance-loss continuation is warranted; do not add it automatically.\n"]
     REPORT.write_text("\n".join(lines).rstrip()+"\n")
 
 def main():
