@@ -1,5 +1,5 @@
 {
-  "code_file": "m2_train.py",
+  "code_file": "train.py",
   "competition_sources": [],
   "dataset_sources": [],
   "enable_gpu": true,
@@ -12,5 +12,5 @@
   "language": "python",
   "machine_shape": "NvidiaTeslaT4",
   "model_sources": [],
-  "title": "M2 Balanced MNIST Loss"
+  "title": "A1 Exact Binary Addition"
 }
