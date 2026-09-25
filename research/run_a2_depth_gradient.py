@@ -137,7 +137,7 @@ def carry_metrics(output: torch.Tensor, target: torch.Tensor, chain: torch.Tenso
 def evaluate(model, x, y, chain) -> dict:
     continuous = model(x)
     hard = model.forward_hard(x)
-    boolean = model.to_discrete(0.5)(x.bool()).float()
+    boolean = model.to_discrete(0.5).to(x.device)(x.bool()).float()
     return {
         "continuous": state_metrics(continuous, y),
         "hard": state_metrics(hard, y),
@@ -252,7 +252,7 @@ def gradient_diagnostics(model, x, y, residual_enabled: bool) -> dict:
 
 
 def mismatch_trace(model, x):
-    disc = model.to_discrete(0.5)
+    disc = model.to_discrete(0.5).to(x.device)
     current = x
     exact = x.bool()
     rows = []
