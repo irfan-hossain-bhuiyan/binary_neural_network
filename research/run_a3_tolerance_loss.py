@@ -112,7 +112,7 @@ def metric(output, target, chain):
     return {
         "bit_accuracy": float(bits.float().mean()), "exact_accuracy": float(rows.float().mean()),
         "wrong_rows": int((~rows).sum()), "wrong_bits": int((~bits).sum()),
-        "mse": float(err.square().mean()), "mae": float(err.mean()), "e_inf": float(err.max()),
+        "mse": float(err.square().mean()), "mae": float(err.mean()), "e_inf": float(err.max()), "mean_row_error": float(row_err.mean()), "median_row_error": float(row_err.median()),
         "p95_abs_error": float(torch.quantile(err.reshape(-1), .95)),
         "p99_abs_error": float(torch.quantile(err.reshape(-1), .99)),
         "per_bit_accuracy": [float(v) for v in bits.float().mean(dim=0)],
