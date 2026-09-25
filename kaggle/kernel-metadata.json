@@ -5,7 +5,7 @@
   "enable_gpu": true,
   "enable_internet": true,
   "enable_tpu": false,
-  "id": "irfanhossainbhuiyan/a4-staged-tolerance",
+  "id": "irfanhossainbhuiyan/a4-staged-tolerance-loss",
   "is_private": true,
   "kernel_sources": [],
   "kernel_type": "script",
