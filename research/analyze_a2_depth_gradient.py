@@ -95,11 +95,11 @@ def figure_data(data: dict):
     ax.set_yscale("log"); ax.set_xlabel("logic-layer index"); ax.set_ylabel("initial parameter gradient L2"); ax.set_title("Initial logic-layer gradient norms"); ax.grid(alpha=.25); ax.legend(fontsize=7, ncol=2); fig.tight_layout(); fig.savefig(FIGURES / "a2_gradient_by_layer.png", dpi=140); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4.6))
-    for residual, style in ((True, "-"), (False, "--")):
+    for residual, style in ((True, "-"),):
         xs, ys = [], []
         for blocks in (1, 2, 4, 8):
             rs = groups[(blocks, residual)]
-            vals = [b["mean_abs_direct_gain"] for r in rs for b in next(e for e in r["trajectory"] if e["step"] == 0)["gradient_diagnostics"]["blocks"]]
+            vals = [b["mean_abs_direct_gain"] for r in rs for b in next(e for e in r["trajectory"] if e["step"] == 0)["gradient_diagnostics"]["blocks"] if b["mean_abs_direct_gain"] is not None]
             xs.append(blocks); ys.append(statistics.mean(vals))
         ax.plot(xs, ys, marker="o", linestyle=style, label=labels[residual])
     ax.set_xscale("symlog", linthresh=1); ax.set_xlabel("blocks"); ax.set_ylabel("mean |1-2F|"); ax.set_title("Initial XOR skip gain"); ax.grid(alpha=.25); ax.legend(); fig.tight_layout(); fig.savefig(FIGURES / "a2_direct_skip_gain.png", dpi=140); plt.close(fig)
@@ -133,7 +133,7 @@ def report(data: dict):
         "## B. Architecture matrix\n",
         "All runs use input 8, width 64, output 5, Lehmer-p2, I2-B mean-field sigma=2 plus BIAS_ONE, full-batch Adam (lr=.01, 3000 updates), and seeds 0–2. Depths are 0, 1, 2, 4, and 8 two-layer width-preserving blocks. Depth 0 has no residual factorial; positive depths have matched XOR_RESIDUAL and NO_RESIDUAL arms. No checkpoints were retained.\n",
         "## C. XOR residual Jacobian\n",
-        r"For (y=x+F(x)-2xF(x)), (J_y=\operatorname{diag}(1-2F)+\operatorname{diag}(1-2x)J_F). The direct skip gain is (D_{skip}=\operatorname{diag}(1-2F)): it is approximately +1 when (F\approx0), −1 when (F\approx1), and vanishes near (F=.5). Thus this is a signed, state-dependent residual path rather than an additive identity. The runner verifies (g_x=g_{direct}+g_{branch}) numerically at initialization and diagnostic checkpoints.\n",
+        "For y=x+F(x)-2xF(x), J_y=diag(1−2F)+diag(1−2x)J_F. The direct skip gain is D_skip=diag(1−2F): it is approximately +1 when F≈0, −1 when F≈1, and vanishes near F=.5. Thus this is a signed, state-dependent residual path rather than an additive identity. The runner verifies g_x=g_direct+g_branch numerically at initialization and diagnostic checkpoints.\n",
         "## D–F. Gradient propagation and cancellation\n",
         "For each block the JSON records input/output activation-gradient norms, transfer ratios, cosine, direct and branch norms, direct/branch cosine, and relative reconstruction error. It also records per-layer parameter gradient norms and gradient/parameter ratios. The direct/branch cosine diagnoses reinforcement versus cancellation; values near −1 indicate cancellation.\n",
         "## G–H. Depth and polarization\n",
@@ -155,6 +155,32 @@ def report(data: dict):
                 if initial_diag:
                     transfers.append(min(x["grad_input_output_ratio"] for x in initial_diag))
             lines.append(f"| {blocks} | {'XOR_RESIDUAL' if residual else 'NO_RESIDUAL'} | {c}/3 | {b}/3 | {stable}/3 | {fmt(median_recovery(rs, 'continuous_exact'))} | {fmt(median_recovery(rs, 'boolean_exact'))} | {statistics.median(transfers) if transfers else 'NA'} |")
+    lines += ["\n### Initial/final activation-gradient decomposition (means over seed and block)\n", "| blocks | residual | initial transfer | final transfer | initial direct/total | final direct/total | initial branch/total | final branch/total | initial direct-branch cosine | final direct-branch cosine | initial mean |1−2F| | final mean |1−2F| |", "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    def block_diag(run, step):
+        entry = next(e for e in run["trajectory"] if e["step"] == step)
+        return entry["gradient_diagnostics"]["blocks"]
+    def avg(items, field):
+        vals = [x[field] for x in items if x.get(field) is not None]
+        return statistics.mean(vals) if vals else None
+    for blocks in (1, 2, 4, 8):
+        for residual in (True, False):
+            rs = groups[(blocks, residual)]
+            initial = [b for r in rs for b in block_diag(r, 0)]
+            final = [b for r in rs for b in block_diag(r, 3000)]
+            values = [avg(initial, "grad_input_output_ratio"), avg(final, "grad_input_output_ratio"), avg(initial, "direct_over_total"), avg(final, "direct_over_total"), avg(initial, "branch_over_total"), avg(final, "branch_over_total"), avg(initial, "direct_branch_cosine"), avg(final, "direct_branch_cosine"), avg(initial, "mean_abs_direct_gain"), avg(final, "mean_abs_direct_gain")]
+            lines.append("| %d | %s | %s |" % (blocks, "XOR_RESIDUAL" if residual else "NO_RESIDUAL", " | ".join(fmt(v) if v is not None or residual else "N/A" for v in values)))
+    lines += ["\nFor NO_RESIDUAL rows, direct-path columns are `None` and the branch is the entire path. Residual decomposition errors are approximately machine precision; the individual values are retained in the canonical JSON.\n", "### Final Boolean accuracy by carry-chain length\n", "| blocks | residual | chain 0 | chain 1 | chain 2 | chain 3 | chain 4 |", "|---:|---|---:|---:|---:|---:|---:|"]
+    for blocks in (0, 1, 2, 4, 8):
+        for residual in ((True,) if blocks == 0 else (True, False)):
+            rs = groups[(blocks, residual)]
+            vals = [statistics.mean(r["final"]["boolean_carry_chain"][str(i)]["exact_accuracy"] for r in rs) for i in range(5)]
+            lines.append("| %d | %s | %s |" % (blocks, "XOR_RESIDUAL" if residual else "NO_RESIDUAL", " | ".join(f"{v:.4f}" for v in vals)))
+    lines += ["\n### Final Boolean accuracy by output bit\n", "| blocks | residual | s0 | s1 | s2 | s3 | s4 |", "|---:|---|---:|---:|---:|---:|---:|"]
+    for blocks in (0, 1, 2, 4, 8):
+        for residual in ((True,) if blocks == 0 else (True, False)):
+            rs = groups[(blocks, residual)]
+            vals = [statistics.mean(r["final"]["boolean"]["per_bit_accuracy"][i] for r in rs) for i in range(5)]
+            lines.append("| %d | %s | %s |" % (blocks, "XOR_RESIDUAL" if residual else "NO_RESIDUAL", " | ".join(f"{v:.4f}" for v in vals)))
     lines += [
         "\nRecovery timestamps are `NOT_REACHED` when a condition did not occur; they are never replaced by step 3000. The canonical trajectories include per-evaluation MSE/MAE/E_inf, continuous/hard/Boolean accuracy, wrong rows/bits, carry groups, per-bit metrics, functional disagreement, internal mismatch traces, timing, and diagnostics at steps 0, 100, 500, 1000, 2000, 3000 (plus any first recovery checkpoint).\n",
         "## N. Interpretation\n",
