@@ -17,6 +17,13 @@ The final repository total includes retained external dataset/model assets in
 `artifacts/`; those are not part of the research source snapshot and remain
 ignored by Git.
 
+## Post-cleanup experiment addition
+
+The A1 run was executed after the cleanup snapshot on Kaggle and added its
+17,242,216-byte trajectory JSON plus seven reproducible figures. This is numerical
+trajectory/forensic data only; it contains no model or optimizer state. The
+size table above intentionally records the cleanup boundary before A1.
+
 ## Removed artifacts
 
 | Category | Count | Bytes | Notes |
